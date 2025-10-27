@@ -5,7 +5,12 @@ const User = require('../models/User');
 const Technician = require('../models/Technician');
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'secretjwt';
+
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // Register
 router.post('/register', async (req, res) => {
