@@ -7,6 +7,8 @@ const socketio = require('socket.io');
 const authRoutes = require('./routes/auth');
 const techRoutes = require('./routes/technician');
 const bookingRoutes = require('./routes/booking');
+const userRoutes = require('./routes/user');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 app.use(cors());
@@ -24,6 +26,8 @@ app.set('io', io);
 app.use('/api/auth', authRoutes);
 app.use('/api/technician', techRoutes);
 app.use('/api/booking', bookingRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/admin', adminRoutes);
 
 io.on('connection', socket => {
   console.log('Socket connected', socket.id);
