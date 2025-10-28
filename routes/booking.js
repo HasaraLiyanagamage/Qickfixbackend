@@ -179,4 +179,156 @@ router.get('/user', auth, async (req, res) => {
   }
 });
 
+// Create booking with specific technician
+router.post('/create', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'user') {
+      return res.status(403).json({ message: 'Only customers can create bookings' });
+    }
+
+    const { serviceType, lat, lng, address, technicianId } = req.body;
+    
+    if (!serviceType || !lat || !lng || !address || !technicianId) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const technician = await Technician.findById(technicianId).populate('user');
+    if (!technician) {
+      return res.status(404).json({ message: 'Technician not found' });
+    }
+
+    // Calculate ETA
+    let eta = 30; // default
+    if (technician.location && technician.location.coordinates) {
+      const [lngT, latT] = technician.location.coordinates;
+      const distance = haversineKm(lat, lng, latT, lngT);
+      eta = Math.round((distance / 40) * 60); // assume 40 km/h
+    }
+
+    const booking = new Booking({
+      user: user._id,
+      technician: technician._id,
+      serviceType,
+      location: { address, lat, lng },
+      status: 'matched',
+      etaMinutes: eta
+    });
+
+    await booking.save();
+
+    // Mark technician as unavailable
+    technician.isAvailable = false;
+    await technician.save();
+
+    // Notify technician via socket
+    const io = req.app.get('io');
+    io.to(`tech_${technician._id}`).emit('booking:assigned', {
+      bookingId: booking._id,
+      user: { name: user.name, lat, lng, address }
+    });
+
+    res.json({
+      message: 'Booking created successfully',
+      booking: {
+        id: booking._id,
+        serviceType: booking.serviceType,
+        status: booking.status,
+        etaMinutes: booking.etaMinutes,
+        location: booking.location
+      },
+      technician: {
+        id: technician._id,
+        name: technician.user.name,
+        phone: technician.user.phone,
+        rating: technician.rating
+      }
+    });
+  } catch (error) {
+    console.error('Error creating booking:', error);
+    res.status(500).json({
+      message: 'Failed to create booking',
+      error: error.message
+    });
+  }
+});
+
+// Get technician jobs (for technician role)
+router.get('/technician/jobs', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'technician') {
+      return res.status(403).json({ message: 'Access denied. Technicians only.' });
+    }
+
+    const technician = await Technician.findOne({ user: req.user.userId });
+    if (!technician) {
+      return res.status(404).json({ message: 'Technician profile not found' });
+    }
+
+    const { status } = req.query;
+    const query = { technician: technician._id };
+    
+    if (status) {
+      query.status = status;
+    }
+
+    const bookings = await Booking.find(query)
+      .populate('user', 'name phone email')
+      .sort({ requestedAt: -1 });
+
+    res.json(bookings);
+  } catch (error) {
+    console.error('Error fetching technician jobs:', error);
+    res.status(500).json({
+      message: 'Failed to fetch jobs',
+      error: error.message
+    });
+  }
+});
+
+// Update booking status
+router.patch('/:id/status', auth, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const booking = await Booking.findById(req.params.id);
+    
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    // Verify authorization
+    if (req.user.role === 'technician') {
+      const tech = await Technician.findOne({ user: req.user.userId });
+      if (!tech || booking.technician.toString() !== tech._id.toString()) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+    } else if (req.user.role === 'user') {
+      if (booking.user.toString() !== req.user.userId) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+    }
+
+    booking.status = status;
+    await booking.save();
+
+    // If completed, make technician available again
+    if (status === 'completed' || status === 'cancelled') {
+      const tech = await Technician.findById(booking.technician);
+      if (tech) {
+        tech.isAvailable = true;
+        await tech.save();
+      }
+    }
+
+    res.json({ message: 'Status updated', booking });
+  } catch (error) {
+    console.error('Error updating booking status:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 module.exports = router;
