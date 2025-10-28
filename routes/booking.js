@@ -131,4 +131,52 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
+// Get all bookings for the current user
+router.get('/user', auth, async (req, res) => {
+  try {
+    // Only allow users to access their own bookings
+    if (req.user.role !== 'user') {
+      return res.status(403).json({ message: 'Access denied. Users only.' });
+    }
+
+    const { status } = req.query;
+    const query = { user: req.user.userId };
+    
+    // Filter by status if provided
+    if (status) {
+      query.status = status;
+    }
+
+    const bookings = await Booking.find(query)
+      .populate('technician', 'rating')
+      .populate('user', 'name phone')
+      .sort({ requestedAt: -1 }); // Most recent first
+
+    // Transform the data for the frontend
+    const formattedBookings = bookings.map(booking => ({
+      id: booking._id,
+      serviceType: booking.serviceType,
+      status: booking.status,
+      requestedAt: booking.requestedAt,
+      address: booking.location?.address || 'Address not available',
+      priceEstimate: booking.priceEstimate,
+      technician: booking.technician ? {
+        rating: booking.technician.rating
+      } : null,
+      user: {
+        name: booking.user?.name || 'Unknown',
+        phone: booking.user?.phone || ''
+      }
+    }));
+
+    res.json(formattedBookings);
+  } catch (error) {
+    console.error('Error fetching user bookings:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch bookings',
+      error: error.message 
+    });
+  }
+});
+
 module.exports = router;
