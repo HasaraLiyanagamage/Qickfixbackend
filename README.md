@@ -37,7 +37,7 @@ backend/
 
 ⚙️ Installation
 1. Clone the repository
-git clone https://github.com/YOUR_USERNAME/quickfix-backend.git
+git clone https://github.com/HasaraLiyanagamage/quickfix-backend.git
 cd quickfix-backend
 
 2. Install dependencies
