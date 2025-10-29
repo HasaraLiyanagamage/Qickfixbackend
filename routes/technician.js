@@ -55,26 +55,70 @@ router.get('/available', async (req, res) => {
     
     console.log('Available technicians query:', JSON.stringify(query));
     console.log('Searching for skill:', skill);
+    console.log('Location params:', { lat, lng, radiusKm });
     
-    // If lat/lng provided, use geoNear (requires 2dsphere index)
+    // If lat/lng provided, try geo query but fall back to regular query if it fails
     if (lat && lng) {
-      // simple bounding using $near
-      const nearby = await Technician.find({
-        ...query,
-        location: {
-          $near: {
-            $geometry: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
-            $maxDistance: parseFloat(radiusKm) * 1000
+      try {
+        // Try geo query first
+        const nearby = await Technician.find({
+          ...query,
+          location: {
+            $near: {
+              $geometry: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
+              $maxDistance: parseFloat(radiusKm) * 1000
+            }
           }
+        }).limit(50).populate('user', 'name phone');
+        
+        console.log(`Found ${nearby.length} technicians near location using $near`);
+        
+        if (nearby.length > 0) {
+          return res.json(nearby);
         }
-      }).limit(50).populate('user', 'name phone');
-      
-      console.log(`Found ${nearby.length} technicians near location`);
-      return res.json(nearby);
+        
+        // If no results with geo query, fall back to regular query
+        console.log('No results with geo query, falling back to regular query');
+      } catch (geoError) {
+        console.error('Geo query failed, falling back to regular query:', geoError.message);
+      }
     }
     
+    // Regular query without location filtering
     const list = await Technician.find(query).limit(100).populate('user','name phone');
     console.log(`Found ${list.length} technicians (no location filter)`);
+    
+    // If we have lat/lng, manually calculate distances and sort
+    if (lat && lng && list.length > 0) {
+      const techsWithDistance = list.map(tech => {
+        const techObj = tech.toObject();
+        if (tech.location && tech.location.coordinates && tech.location.coordinates.length === 2) {
+          const [techLng, techLat] = tech.location.coordinates;
+          // Simple distance calculation (Haversine formula)
+          const R = 6371; // Earth's radius in km
+          const dLat = (techLat - parseFloat(lat)) * Math.PI / 180;
+          const dLng = (techLng - parseFloat(lng)) * Math.PI / 180;
+          const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(parseFloat(lat) * Math.PI / 180) * Math.cos(techLat * Math.PI / 180) *
+                    Math.sin(dLng/2) * Math.sin(dLng/2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          techObj.distance = R * c;
+        } else {
+          techObj.distance = 999999; // No valid location
+        }
+        return techObj;
+      });
+      
+      // Sort by distance
+      techsWithDistance.sort((a, b) => a.distance - b.distance);
+      
+      // Filter by radius
+      const filtered = techsWithDistance.filter(t => t.distance <= parseFloat(radiusKm));
+      console.log(`After distance filtering: ${filtered.length} technicians within ${radiusKm}km`);
+      
+      return res.json(filtered);
+    }
+    
     res.json(list);
   } catch (e) {
     console.error('Error in /available endpoint:', e);

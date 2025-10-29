@@ -15,26 +15,53 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // Register
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, phone, role, skills } = req.body;
+    const { name, email, password, phone, role, skills, lat, lng, address } = req.body;
     if (!email || !password) return res.status(400).json({ message: 'Missing email or password' });
 
     const exists = await User.findOne({ email });
     if (exists) return res.status(400).json({ message: 'Email already used' });
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, passwordHash, phone, role });
+    
+    // Create user with address and coordinates if provided
+    const userData = { name, email, passwordHash, phone, role };
+    if (address) userData.address = address;
+    if (lat !== undefined) userData.lat = parseFloat(lat);
+    if (lng !== undefined) userData.lng = parseFloat(lng);
+    
+    const user = new User(userData);
     await user.save();
 
     if (role === 'technician') {
-      const tech = new Technician({ user: user._id, skills: skills || [], isAvailable: true, location: { coordinates: [0,0] }});
+      // Use provided coordinates or default to [0,0]
+      const coordinates = (lng !== undefined && lat !== undefined) 
+        ? [parseFloat(lng), parseFloat(lat)] 
+        : [0, 0];
+      
+      console.log('Creating technician with:', {
+        skills: skills || [],
+        coordinates,
+        isAvailable: true
+      });
+      
+      const tech = new Technician({ 
+        user: user._id, 
+        skills: skills || [], 
+        isAvailable: true, 
+        location: { 
+          type: 'Point',
+          coordinates 
+        }
+      });
       await tech.save();
+      console.log('Technician created:', tech._id);
     }
 
     const token = jwt.sign({ userId: user._id, role: user.role }, JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
     res.json({ token, user: { id: user._id, email: user.email, name: user.name, role: user.role }});
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Registration error:', e);
+    res.status(500).json({ message: 'Server error', error: e.message });
   }
 });
 
