@@ -44,7 +44,18 @@ router.get('/available', async (req, res) => {
   try {
     const { lat, lng, radiusKm = 10, skill } = req.query;
     const query = { isAvailable: true };
-    if (skill) query.skills = skill;
+    
+    // Use $in operator to check if skill is in the skills array
+    // Also make it case-insensitive using regex
+    if (skill) {
+      query.skills = { 
+        $in: [new RegExp(`^${skill}$`, 'i')] 
+      };
+    }
+    
+    console.log('Available technicians query:', JSON.stringify(query));
+    console.log('Searching for skill:', skill);
+    
     // If lat/lng provided, use geoNear (requires 2dsphere index)
     if (lat && lng) {
       // simple bounding using $near
@@ -57,13 +68,17 @@ router.get('/available', async (req, res) => {
           }
         }
       }).limit(50).populate('user', 'name phone');
+      
+      console.log(`Found ${nearby.length} technicians near location`);
       return res.json(nearby);
     }
+    
     const list = await Technician.find(query).limit(100).populate('user','name phone');
+    console.log(`Found ${list.length} technicians (no location filter)`);
     res.json(list);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error in /available endpoint:', e);
+    res.status(500).json({ message: 'Server error', error: e.message });
   }
 });
 
