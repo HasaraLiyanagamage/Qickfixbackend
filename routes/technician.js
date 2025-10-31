@@ -18,6 +18,45 @@ function auth(req, res, next) {
   } catch (e) { return res.status(401).json({ message: 'Invalid token' }); }
 }
 
+// Debug endpoint to list all technicians
+router.get('/debug/all', async (req, res) => {
+  try {
+    const techs = await Technician.find().populate('user', 'name email phone');
+    const summary = techs.map(t => ({
+      id: t._id,
+      name: t.user?.name,
+      email: t.user?.email,
+      skills: t.skills,
+      isAvailable: t.isAvailable,
+      location: t.location,
+      rating: t.rating
+    }));
+    
+    res.json({
+      total: techs.length,
+      technicians: summary
+    });
+  } catch (e) {
+    console.error('Debug endpoint error:', e);
+    res.status(500).json({ message: 'Server error', error: e.message });
+  }
+});
+
+// Ensure geospatial index exists
+router.get('/debug/ensure-index', async (req, res) => {
+  try {
+    await Technician.collection.createIndex({ location: '2dsphere' });
+    const indexes = await Technician.collection.indexes();
+    res.json({
+      message: 'Index ensured',
+      indexes: indexes
+    });
+  } catch (e) {
+    console.error('Index creation error:', e);
+    res.status(500).json({ message: 'Error creating index', error: e.message });
+  }
+});
+
 // Update technician location and availability
 router.post('/update-location', auth, async (req, res) => {
   try {
@@ -45,17 +84,28 @@ router.get('/available', async (req, res) => {
     const { lat, lng, radiusKm = 10, skill } = req.query;
     const query = { isAvailable: true };
     
+    console.log('=== AVAILABLE TECHNICIANS REQUEST ===');
+    console.log('Request params:', { lat, lng, radiusKm, skill });
+    
+    // First, let's check total technicians in DB
+    const totalTechs = await Technician.countDocuments();
+    const availableTechs = await Technician.countDocuments({ isAvailable: true });
+    console.log(`Total technicians in DB: ${totalTechs}`);
+    console.log(`Available technicians: ${availableTechs}`);
+    
     // Use $in operator to check if skill is in the skills array
     // Also make it case-insensitive using regex
     if (skill) {
       query.skills = { 
         $in: [new RegExp(`^${skill}$`, 'i')] 
       };
+      
+      // Check how many have this skill
+      const withSkill = await Technician.countDocuments(query);
+      console.log(`Technicians with skill "${skill}": ${withSkill}`);
     }
     
-    console.log('Available technicians query:', JSON.stringify(query));
-    console.log('Searching for skill:', skill);
-    console.log('Location params:', { lat, lng, radiusKm });
+    console.log('Query object:', JSON.stringify(query));
     
     // If lat/lng provided, try geo query but fall back to regular query if it fails
     if (lat && lng) {
