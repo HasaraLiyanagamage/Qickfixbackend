@@ -119,19 +119,8 @@ router.post('/:id/accept', auth, async (req, res) => {
   }
 });
 
-// Get booking by id
-router.get('/:id', auth, async (req, res) => {
-  try {
-    const booking = await Booking.findById(req.params.id).populate('technician').populate('user');
-    if (!booking) return res.status(404).json({ message: 'Not found' });
-    res.json(booking);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
 // Get all bookings for the current user
+// IMPORTANT: This must come BEFORE /:id route to avoid "user" being treated as an ID
 router.get('/user', auth, async (req, res) => {
   try {
     // Only allow users to access their own bookings
@@ -176,6 +165,18 @@ router.get('/user', auth, async (req, res) => {
       message: 'Failed to fetch bookings',
       error: error.message 
     });
+  }
+});
+
+// Get booking by id
+router.get('/:id', auth, async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id).populate('technician').populate('user');
+    if (!booking) return res.status(404).json({ message: 'Not found' });
+    res.json(booking);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
