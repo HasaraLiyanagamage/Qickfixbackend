@@ -81,8 +81,7 @@ router.post('/update-location', auth, async (req, res) => {
 // List available technicians (optionally filter by service)
 router.get('/available', async (req, res) => {
   try {
-    const { lat, lng, radiusKm = 10, skill } = req.query;
-    const query = { isAvailable: true };
+    const { lat, lng, radiusKm = 50, skill } = req.query;
     
     console.log('=== AVAILABLE TECHNICIANS REQUEST ===');
     console.log('Request params:', { lat, lng, radiusKm, skill });
@@ -93,85 +92,81 @@ router.get('/available', async (req, res) => {
     console.log(`Total technicians in DB: ${totalTechs}`);
     console.log(`Available technicians: ${availableTechs}`);
     
-    // Use $in operator to check if skill is in the skills array
-    // Also make it case-insensitive using regex
+    // Build base query
+    const baseQuery = { isAvailable: true };
+    
+    // Add skill filter if provided - use case-insensitive regex
     if (skill) {
-      query.skills = { 
-        $in: [new RegExp(`^${skill}$`, 'i')] 
+      baseQuery.skills = { 
+        $regex: new RegExp(skill, 'i')
       };
       
       // Check how many have this skill
-      const withSkill = await Technician.countDocuments(query);
+      const withSkill = await Technician.countDocuments(baseQuery);
       console.log(`Technicians with skill "${skill}": ${withSkill}`);
-    }
-    
-    console.log('Query object:', JSON.stringify(query));
-    
-    // If lat/lng provided, try geo query but fall back to regular query if it fails
-    if (lat && lng) {
-      try {
-        // Try geo query first
-        const nearby = await Technician.find({
-          ...query,
-          location: {
-            $near: {
-              $geometry: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
-              $maxDistance: parseFloat(radiusKm) * 1000
-            }
-          }
-        }).limit(50).populate('user', 'name phone');
-        
-        console.log(`Found ${nearby.length} technicians near location using $near`);
-        
-        if (nearby.length > 0) {
-          return res.json(nearby);
-        }
-        
-        // If no results with geo query, fall back to regular query
-        console.log('No results with geo query, falling back to regular query');
-      } catch (geoError) {
-        console.error('Geo query failed, falling back to regular query:', geoError.message);
+      
+      // If no technicians with this skill, return empty array early
+      if (withSkill === 0) {
+        console.log('No technicians found with the requested skill');
+        return res.json([]);
       }
     }
     
-    // Regular query without location filtering
-    const list = await Technician.find(query).limit(100).populate('user','name phone');
-    console.log(`Found ${list.length} technicians (no location filter)`);
+    console.log('Base query:', JSON.stringify(baseQuery));
     
-    // If we have lat/lng, manually calculate distances and sort
-    if (lat && lng && list.length > 0) {
-      const techsWithDistance = list.map(tech => {
-        const techObj = tech.toObject();
+    // Get all matching technicians first
+    let technicians = await Technician.find(baseQuery)
+      .limit(100)
+      .populate('user', 'name phone')
+      .lean();
+    
+    console.log(`Found ${technicians.length} technicians matching base criteria`);
+    
+    // If we have lat/lng, calculate distances and filter by radius
+    if (lat && lng && technicians.length > 0) {
+      const userLat = parseFloat(lat);
+      const userLng = parseFloat(lng);
+      const maxRadius = parseFloat(radiusKm);
+      
+      console.log(`Calculating distances from (${userLat}, ${userLng})`);
+      
+      // Calculate distance for each technician
+      technicians = technicians.map(tech => {
         if (tech.location && tech.location.coordinates && tech.location.coordinates.length === 2) {
           const [techLng, techLat] = tech.location.coordinates;
-          // Simple distance calculation (Haversine formula)
+          
+          // Haversine formula for distance calculation
           const R = 6371; // Earth's radius in km
-          const dLat = (techLat - parseFloat(lat)) * Math.PI / 180;
-          const dLng = (techLng - parseFloat(lng)) * Math.PI / 180;
+          const dLat = (techLat - userLat) * Math.PI / 180;
+          const dLng = (techLng - userLng) * Math.PI / 180;
           const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                    Math.cos(parseFloat(lat) * Math.PI / 180) * Math.cos(techLat * Math.PI / 180) *
+                    Math.cos(userLat * Math.PI / 180) * Math.cos(techLat * Math.PI / 180) *
                     Math.sin(dLng/2) * Math.sin(dLng/2);
           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-          techObj.distance = R * c;
+          tech.distance = R * c;
+          
+          console.log(`Technician ${tech.user?.name}: ${tech.distance.toFixed(2)}km away at (${techLat}, ${techLng})`);
         } else {
-          techObj.distance = 999999; // No valid location
+          tech.distance = 999999; // No valid location
+          console.log(`Technician ${tech.user?.name}: No valid location`);
         }
-        return techObj;
+        return tech;
       });
       
-      // Sort by distance
-      techsWithDistance.sort((a, b) => a.distance - b.distance);
+      // Sort by distance (closest first)
+      technicians.sort((a, b) => a.distance - b.distance);
       
       // Filter by radius
-      const filtered = techsWithDistance.filter(t => t.distance <= parseFloat(radiusKm));
-      console.log(`After distance filtering: ${filtered.length} technicians within ${radiusKm}km`);
-      
-      return res.json(filtered);
+      const beforeFilter = technicians.length;
+      technicians = technicians.filter(t => t.distance <= maxRadius);
+      console.log(`After radius filter (${maxRadius}km): ${technicians.length}/${beforeFilter} technicians`);
     }
     
-    res.json(list);
+    console.log(`Returning ${technicians.length} technicians`);
+    res.json(technicians);
   } catch (e) {
     console.error('Error in /available endpoint:', e);
+    console.error('Stack trace:', e.stack);
     res.status(500).json({ message: 'Server error', error: e.message });
   }
 });

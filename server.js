@@ -11,7 +11,18 @@ const userRoutes = require('./routes/user');
 const adminRoutes = require('./routes/admin');
 
 const app = express();
-app.use(cors());
+
+// CORS configuration - allow all origins for development
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
+// Handle preflight requests
+app.options('*', cors());
+
 app.use(express.json());
 
 const server = http.createServer(app);
