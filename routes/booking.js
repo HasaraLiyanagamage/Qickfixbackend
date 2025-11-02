@@ -137,25 +137,28 @@ router.get('/user', auth, async (req, res) => {
     }
 
     const bookings = await Booking.find(query)
-      .populate('technician', 'rating')
-      .populate('user', 'name phone')
+      .populate({
+        path: 'technician',
+        populate: { path: 'user', select: 'name phone email' }
+      })
+      .populate('user', 'name phone email')
       .sort({ requestedAt: -1 }); // Most recent first
 
-    // Transform the data for the frontend
+    // Return full booking data with proper field mapping
     const formattedBookings = bookings.map(booking => ({
+      _id: booking._id,
       id: booking._id,
+      user: booking.user,
+      technician: booking.technician,
       serviceType: booking.serviceType,
       status: booking.status,
+      location: booking.location,
+      createdAt: booking.requestedAt,
       requestedAt: booking.requestedAt,
-      address: booking.location?.address || 'Address not available',
+      updatedAt: booking.updatedAt,
+      etaMinutes: booking.etaMinutes,
       priceEstimate: booking.priceEstimate,
-      technician: booking.technician ? {
-        rating: booking.technician.rating
-      } : null,
-      user: {
-        name: booking.user?.name || 'Unknown',
-        phone: booking.user?.phone || ''
-      }
+      totalCost: booking.priceEstimate
     }));
 
     res.json(formattedBookings);
