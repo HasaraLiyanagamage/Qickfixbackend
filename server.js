@@ -43,6 +43,12 @@ app.use('/api/admin', adminRoutes);
 io.on('connection', socket => {
   console.log('Socket connected', socket.id);
 
+  // User joins their personal room
+  socket.on('user:join', ({ userId }) => {
+    socket.join(`user_${userId}`);
+    console.log(`Socket ${socket.id} joined room user_${userId}`);
+  });
+
   // Technician location updates - technician should join room with their techId
   socket.on('tech:join', ({ techId }) => {
     socket.join(`tech_${techId}`);

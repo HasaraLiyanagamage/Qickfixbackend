@@ -75,15 +75,22 @@ router.post('/request', auth, async (req, res) => {
       chosen.isAvailable = false;
       await chosen.save();
 
-      // Emit socket to technician room to notify
+      // Emit socket events to notify all parties
       const io = req.app.get('io');
       io.to(`tech_${chosen._id}`).emit('booking:assigned', { bookingId: booking._id, user: { name: user.name, lat, lng, address } });
+      io.to(`user_${user._id}`).emit('booking:updated', { bookingId: booking._id, status: 'matched' });
+      io.emit('booking:updated', { bookingId: booking._id, status: 'matched' });
 
       return res.json({ booking, technician: chosen });
     } else {
       // No tech found
       booking.status = 'requested';
       await booking.save();
+      
+      // Notify user that booking is created but no tech available yet
+      const io = req.app.get('io');
+      io.to(`user_${user._id}`).emit('booking:updated', { bookingId: booking._id, status: 'requested' });
+      
       return res.status(200).json({ message: 'No technicians available nearby', booking });
     }
   } catch (e) {
@@ -97,20 +104,25 @@ router.post('/:id/accept', auth, async (req, res) => {
   try {
     if (req.user.role !== 'technician') return res.status(403).json({ message: 'Only technicians' });
     const { id } = req.params;
-    const booking = await Booking.findById(id);
+    const booking = await Booking.findById(id).populate('technician').populate('user');
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
     const tech = await Technician.findOne({ user: req.user.userId });
     if (!tech) return res.status(404).json({ message: 'Tech not found' });
 
-    if (booking.technician && booking.technician.toString() !== tech._id.toString()) return res.status(403).json({ message: 'Not assigned to you' });
+    if (booking.technician && booking.technician._id.toString() !== tech._id.toString()) return res.status(403).json({ message: 'Not assigned to you' });
 
     booking.status = 'accepted';
     await booking.save();
 
-    // Notify user via socket (room user_<userId>)
+    // Notify user via socket
     const io = req.app.get('io');
-    io.emit('booking:accepted', { bookingId: booking._id, techId: tech._id });
+    io.emit('booking:accepted', { bookingId: booking._id, techId: tech._id, status: 'accepted' });
+    io.emit('booking:updated', { bookingId: booking._id, status: 'accepted' });
+    // Notify specific user
+    if (booking.user && booking.user._id) {
+      io.to(`user_${booking.user._id}`).emit('booking:status', { bookingId: booking._id, status: 'accepted' });
+    }
 
     res.json({ ok: true, booking });
   } catch (e) {
@@ -229,12 +241,14 @@ router.post('/create', auth, async (req, res) => {
     technician.isAvailable = false;
     await technician.save();
 
-    // Notify technician via socket
+    // Notify all parties via socket
     const io = req.app.get('io');
     io.to(`tech_${technician._id}`).emit('booking:assigned', {
       bookingId: booking._id,
       user: { name: user.name, lat, lng, address }
     });
+    io.to(`user_${user._id}`).emit('booking:updated', { bookingId: booking._id, status: 'matched' });
+    io.emit('booking:updated', { bookingId: booking._id, status: 'matched' });
 
     res.json({
       message: 'Booking created successfully',
@@ -298,7 +312,7 @@ router.get('/technician/jobs', auth, async (req, res) => {
 router.patch('/:id/status', auth, async (req, res) => {
   try {
     const { status } = req.body;
-    const booking = await Booking.findById(req.params.id);
+    const booking = await Booking.findById(req.params.id).populate('user').populate('technician');
     
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found' });
@@ -307,25 +321,46 @@ router.patch('/:id/status', auth, async (req, res) => {
     // Verify authorization
     if (req.user.role === 'technician') {
       const tech = await Technician.findOne({ user: req.user.userId });
-      if (!tech || booking.technician.toString() !== tech._id.toString()) {
+      if (!tech || booking.technician._id.toString() !== tech._id.toString()) {
         return res.status(403).json({ message: 'Not authorized' });
       }
     } else if (req.user.role === 'user') {
-      if (booking.user.toString() !== req.user.userId) {
+      if (booking.user._id.toString() !== req.user.userId) {
         return res.status(403).json({ message: 'Not authorized' });
       }
     }
 
+    const oldStatus = booking.status;
     booking.status = status;
     await booking.save();
 
     // If completed, make technician available again
     if (status === 'completed' || status === 'cancelled') {
-      const tech = await Technician.findById(booking.technician);
+      const tech = await Technician.findById(booking.technician._id);
       if (tech) {
         tech.isAvailable = true;
         await tech.save();
       }
+    }
+
+    // Emit socket events to notify all parties
+    const io = req.app.get('io');
+    io.emit('booking:updated', { bookingId: booking._id, status, oldStatus });
+    io.emit('booking:status', { bookingId: booking._id, status });
+    
+    // Notify specific user
+    if (booking.user && booking.user._id) {
+      io.to(`user_${booking.user._id}`).emit('booking:status', { bookingId: booking._id, status });
+    }
+    
+    // Notify specific technician
+    if (booking.technician && booking.technician._id) {
+      io.to(`tech_${booking.technician._id}`).emit('booking:status', { bookingId: booking._id, status });
+    }
+
+    // Emit specific event for completion
+    if (status === 'completed') {
+      io.emit('booking:completed', { bookingId: booking._id });
     }
 
     res.json({ message: 'Status updated', booking });
