@@ -370,4 +370,60 @@ router.patch('/:id/status', auth, async (req, res) => {
   }
 });
 
+// Rate a completed booking
+router.post('/:id/rate', auth, async (req, res) => {
+  try {
+    const { score, review } = req.body;
+    const booking = await Booking.findById(req.params.id).populate('technician');
+    
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    // Only the user who made the booking can rate
+    if (booking.user.toString() !== req.user.userId) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    // Can only rate completed bookings
+    if (booking.status !== 'completed') {
+      return res.status(400).json({ message: 'Can only rate completed bookings' });
+    }
+
+    // Validate score
+    if (!score || score < 1 || score > 5) {
+      return res.status(400).json({ message: 'Score must be between 1 and 5' });
+    }
+
+    booking.rating = {
+      score,
+      review: review || '',
+      ratedAt: new Date()
+    };
+    await booking.save();
+
+    // Update technician's average rating
+    if (booking.technician) {
+      const tech = await Technician.findById(booking.technician._id);
+      if (tech) {
+        const allRatedBookings = await Booking.find({
+          technician: tech._id,
+          'rating.score': { $exists: true }
+        });
+        
+        if (allRatedBookings.length > 0) {
+          const avgRating = allRatedBookings.reduce((sum, b) => sum + b.rating.score, 0) / allRatedBookings.length;
+          tech.rating = Math.round(avgRating * 10) / 10; // Round to 1 decimal
+        }
+        await tech.save();
+      }
+    }
+
+    res.json({ message: 'Rating submitted successfully', booking });
+  } catch (error) {
+    console.error('Error rating booking:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 module.exports = router;

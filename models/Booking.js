@@ -12,7 +12,12 @@ const BookingSchema = new mongoose.Schema({
   },
   requestedAt: { type: Date, default: Date.now },
   etaMinutes: { type: Number },
-  priceEstimate: { type: Number }
+  priceEstimate: { type: Number },
+  rating: { 
+    score: { type: Number, min: 1, max: 5 },
+    review: { type: String },
+    ratedAt: { type: Date }
+  }
 });
 
 module.exports = mongoose.model('Booking', BookingSchema);
