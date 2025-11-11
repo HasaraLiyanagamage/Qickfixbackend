@@ -9,6 +9,7 @@ const UserSchema = new mongoose.Schema({
   lat: { type: Number },
   lng: { type: Number },
   role: { type: String, enum: ['user','technician','admin'], default: 'user' },
+  socialProvider: { type: String }, // 'google', 'apple', etc.
   createdAt: { type: Date, default: Date.now }
 });
 

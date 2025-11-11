@@ -83,4 +83,57 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// Social Login (Google, Apple, etc.)
+router.post('/social-login', async (req, res) => {
+  try {
+    const { email, name, provider } = req.body;
+    
+    if (!email || !name) {
+      return res.status(400).json({ message: 'Missing email or name' });
+    }
+
+    // Check if user exists
+    let user = await User.findOne({ email });
+    
+    if (!user) {
+      // Create new user for social login
+      // No password hash needed for social login users
+      user = new User({
+        name,
+        email,
+        role: 'user', // Default role for social login
+        passwordHash: await bcrypt.hash(Math.random().toString(36), 10), // Random hash (not used)
+        socialProvider: provider
+      });
+      await user.save();
+      console.log(`New user created via ${provider} login:`, user._id);
+    } else {
+      // Update social provider if not set
+      if (!user.socialProvider) {
+        user.socialProvider = provider;
+        await user.save();
+      }
+    }
+
+    const token = jwt.sign(
+      { userId: user._id, role: user.role }, 
+      JWT_SECRET, 
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+    
+    res.json({ 
+      token, 
+      user: { 
+        id: user._id, 
+        email: user.email, 
+        name: user.name, 
+        role: user.role 
+      }
+    });
+  } catch (e) {
+    console.error('Social login error:', e);
+    res.status(500).json({ message: 'Server error', error: e.message });
+  }
+});
+
 module.exports = router;
