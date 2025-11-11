@@ -131,6 +131,64 @@ router.post('/:id/accept', auth, async (req, res) => {
   }
 });
 
+// Get all bookings (admin only)
+// IMPORTANT: This must come BEFORE /:id route to avoid "all" being treated as an ID
+router.get('/all', auth, async (req, res) => {
+  try {
+    // Only allow admins to access all bookings
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Admins only.' });
+    }
+
+    const { status } = req.query;
+    const query = {};
+    
+    // Filter by status if provided
+    if (status) {
+      query.status = status;
+    }
+
+    const bookings = await Booking.find(query)
+      .populate({
+        path: 'technician',
+        populate: { path: 'user', select: 'name phone email' }
+      })
+      .populate('user', 'name phone email')
+      .sort({ requestedAt: -1 }); // Most recent first
+
+    // Return full booking data with proper field mapping
+    const formattedBookings = bookings.map(booking => ({
+      _id: booking._id,
+      id: booking._id,
+      user: booking.user,
+      userId: booking.user?._id || booking.user,
+      technician: booking.technician,
+      technicianId: booking.technician?._id || booking.technician,
+      serviceType: booking.serviceType,
+      status: booking.status,
+      location: booking.location,
+      createdAt: booking.requestedAt,
+      requestedAt: booking.requestedAt,
+      updatedAt: booking.updatedAt,
+      etaMinutes: booking.etaMinutes,
+      priceEstimate: booking.priceEstimate,
+      totalCost: booking.priceEstimate,
+      notes: booking.notes,
+      ratingScore: booking.rating?.score,
+      ratingReview: booking.rating?.review,
+      ratedAt: booking.rating?.ratedAt
+    }));
+
+    res.json(formattedBookings);
+  } catch (error) {
+    console.error('Error fetching all bookings:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch bookings',
+      error: error.message 
+    });
+  }
+});
+
 // Get all bookings for the current user
 // IMPORTANT: This must come BEFORE /:id route to avoid "user" being treated as an ID
 router.get('/user', auth, async (req, res) => {
