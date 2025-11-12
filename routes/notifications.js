@@ -22,12 +22,16 @@ function auth(req, res, next) {
 // Get user notifications
 router.get('/', auth, async (req, res) => {
   try {
+    // Support both id and userId from JWT token
+    const userId = req.user.userId || req.user.id;
+    
     const notifications = await Notification.find({ 
-      userId: req.user.id 
+      userId: userId 
     })
     .sort({ createdAt: -1 })
     .limit(50);
     
+    console.log(`User notifications query for userId: ${userId}, found: ${notifications.length}`);
     res.json({ notifications });
   } catch (error) {
     console.error('Get notifications error:', error);
@@ -38,12 +42,16 @@ router.get('/', auth, async (req, res) => {
 // Get technician notifications
 router.get('/technician', auth, async (req, res) => {
   try {
+    // Support both id and userId from JWT token
+    const userId = req.user.userId || req.user.id;
+    
     const notifications = await Notification.find({ 
-      technicianId: req.user.id 
+      technicianId: userId 
     })
     .sort({ createdAt: -1 })
     .limit(50);
     
+    console.log(`Technician notifications query for userId: ${userId}, found: ${notifications.length}`);
     res.json({ notifications });
   } catch (error) {
     console.error('Get technician notifications error:', error);
@@ -54,10 +62,12 @@ router.get('/technician', auth, async (req, res) => {
 // Get unread count
 router.get('/unread/count', auth, async (req, res) => {
   try {
+    const userId = req.user.userId || req.user.id;
+    
     const count = await Notification.countDocuments({ 
       $or: [
-        { userId: req.user.id },
-        { technicianId: req.user.id }
+        { userId: userId },
+        { technicianId: userId }
       ],
       isRead: false 
     });
@@ -92,11 +102,13 @@ router.patch('/:id/read', auth, async (req, res) => {
 // Mark all as read
 router.patch('/read-all', auth, async (req, res) => {
   try {
+    const userId = req.user.userId || req.user.id;
+    
     await Notification.updateMany(
       {
         $or: [
-          { userId: req.user.id },
-          { technicianId: req.user.id }
+          { userId: userId },
+          { technicianId: userId }
         ],
         isRead: false
       },
