@@ -6,6 +6,21 @@ const TechnicianSchema = new mongoose.Schema({
   rating: { type: Number, default: 5 },
   reviews: [{ user: String, rating: Number, comment: String }],
   isAvailable: { type: Boolean, default: true },
+  
+  // Verification status
+  verification: {
+    isVerified: { type: Boolean, default: false },
+    verificationLevel: { 
+      type: String, 
+      enum: ['none', 'basic', 'standard', 'premium'], 
+      default: 'none' 
+    },
+    verificationScore: { type: Number, default: 0 },
+    verifiedAt: Date,
+    expiryDate: Date,
+    badgeUrl: String // URL to verification badge image
+  },
+  
   // last known location
   location: {
     type: { type: String, enum: ['Point'], default: 'Point' },

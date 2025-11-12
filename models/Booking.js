@@ -72,6 +72,18 @@ const BookingSchema = new mongoose.Schema({
   description: String,
   images: [String], // URLs to problem images
   
+  // Emergency handling
+  emergency: {
+    isEmergency: { type: Boolean, default: false },
+    priority: { type: Number, default: 0 }, // 0=normal, 1=urgent, 2=emergency
+    broadcastCount: { type: Number, default: 0 }, // How many technicians notified
+    broadcastedTo: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Technician' }],
+    escalationLevel: { type: Number, default: 0 },
+    escalatedAt: Date,
+    responseTimeout: { type: Number, default: 10 }, // minutes
+    autoEscalate: { type: Boolean, default: true }
+  },
+  
   // Cancellation details
   cancellation: {
     cancelledBy: { type: String, enum: ['user', 'technician', 'admin'] },

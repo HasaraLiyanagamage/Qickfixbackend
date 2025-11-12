@@ -5,9 +5,7 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const jwt = require('jsonwebtoken');
 const { haversineKm } = require('../utils/geo');
-const pricingService = require('../services/pricingService');
-const walletService = require('../services/walletService');
-const referralService = require('../services/referralService');
+const EmergencyService = require('../services/emergencyService');
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'secretjwt';
 
@@ -104,6 +102,72 @@ router.post('/estimate-fare', auth, async (req, res) => {
   } catch (error) {
     console.error('Fare estimation error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+/**
+ * Create emergency booking with priority handling
+ * POST /api/booking/emergency
+ * body: { serviceType, lat, lng, address, urgency, description }
+ */
+router.post('/emergency', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'user') {
+      return res.status(403).json({ message: 'Only customers can request emergency services' });
+    }
+
+    const { serviceType, lat, lng, address, urgency = 'emergency', description } = req.body;
+
+    if (!serviceType || !lat || !lng || !address) {
+      return res.status(400).json({ message: 'Service type, location, and address are required' });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Create emergency booking using EmergencyService
+    const booking = await EmergencyService.createEmergencyBooking({
+      user: user._id,
+      serviceType,
+      location: { address, lat, lng },
+      urgency,
+      description,
+      status: 'requested'
+    });
+
+    // Create notification for user
+    await Notification.create({
+      userId: user._id,
+      type: 'emergency_booking_created',
+      title: 'Emergency Request Received',
+      message: `Your ${urgency} ${serviceType} request has been received. Finding nearest technicians...`,
+      bookingId: booking._id
+    });
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${user._id}`).emit('emergency:created', {
+        bookingId: booking._id,
+        urgency,
+        status: booking.status,
+        message: 'Emergency request sent to multiple technicians'
+      });
+    }
+
+    res.json({
+      success: true,
+      booking,
+      message: `${urgency.toUpperCase()} request created. Notifying ${booking.emergency.broadcastCount} nearby technicians.`,
+      priority: booking.emergency.priority,
+      responseTimeout: booking.emergency.responseTimeout
+    });
+
+  } catch (error) {
+    console.error('Emergency booking error:', error);
+    res.status(500).json({ message: 'Failed to create emergency booking', error: error.message });
   }
 });
 
