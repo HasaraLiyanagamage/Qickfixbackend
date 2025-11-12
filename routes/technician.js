@@ -327,15 +327,27 @@ router.get('/feedbacks', auth, async (req, res) => {
     .limit(50);
 
     // Format feedbacks
-    const feedbacks = bookings.map(booking => ({
-      _id: booking._id,
-      rating: booking.rating || 0,
-      comment: booking.comment || '',
-      userName: booking.user?.name || 'Anonymous',
-      serviceType: booking.serviceType || 'Service',
-      createdAt: booking.updatedAt || booking.createdAt,
-      bookingId: booking._id
-    }));
+    const feedbacks = bookings.map(booking => {
+      // Extract rating score - handle both object and direct number formats
+      const ratingScore = typeof booking.rating === 'object' && booking.rating !== null
+        ? (booking.rating.score || 0)
+        : (booking.rating || 0);
+      
+      // Extract review text from rating object or comment field
+      const reviewText = typeof booking.rating === 'object' && booking.rating !== null
+        ? (booking.rating.review || booking.comment || '')
+        : (booking.comment || '');
+      
+      return {
+        _id: booking._id,
+        rating: ratingScore,
+        comment: reviewText,
+        userName: booking.user?.name || 'Anonymous',
+        serviceType: booking.serviceType || 'Service',
+        createdAt: booking.updatedAt || booking.createdAt,
+        bookingId: booking._id
+      };
+    });
 
     res.json({ feedbacks });
   } catch (error) {
