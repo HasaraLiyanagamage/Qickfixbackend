@@ -134,6 +134,57 @@ router.get('/status', auth, async (req, res) => {
 });
 
 /**
+ * Get all verifications (Admin)
+ * GET /api/verification/all
+ */
+router.get('/all', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const verifications = await Verification.find()
+      .populate({
+        path: 'technician',
+        populate: { path: 'user', select: 'name email phone' }
+      })
+      .sort({ submittedAt: -1 });
+
+    // Calculate scores for all verifications
+    verifications.forEach(v => {
+      if (v.calculateScore) v.calculateScore();
+    });
+
+    res.json({
+      count: verifications.length,
+      verifications: verifications.map(v => ({
+        _id: v._id,
+        technician: v.technician ? {
+          _id: v.technician._id,
+          name: v.technician.user?.name || 'Unknown',
+          email: v.technician.user?.email || '',
+          phone: v.technician.user?.phone || '',
+          skills: v.technician.skills || []
+        } : null,
+        status: v.status,
+        isVerified: v.isVerified,
+        verificationScore: v.verificationScore || 0,
+        verificationLevel: v.verificationLevel || 'basic',
+        submittedAt: v.submittedAt,
+        completedAt: v.completedAt,
+        verifiedAt: v.completedAt,
+        documents: v.documents || {},
+        rejection: v.rejection
+      }))
+    });
+
+  } catch (error) {
+    console.error('Get all verifications error:', error);
+    res.status(500).json({ message: 'Failed to get verifications', error: error.message });
+  }
+});
+
+/**
  * Get all pending verifications (Admin)
  * GET /api/verification/pending
  */
