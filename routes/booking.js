@@ -2,6 +2,7 @@ const express = require('express');
 const Booking = require('../models/Booking');
 const Technician = require('../models/Technician');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 const jwt = require('jsonwebtoken');
 const { haversineKm } = require('../utils/geo');
 const router = express.Router();
@@ -75,6 +76,24 @@ router.post('/request', auth, async (req, res) => {
       chosen.isAvailable = false;
       await chosen.save();
 
+      // Create notification for technician
+      await Notification.create({
+        technicianId: chosen.user,
+        type: 'new_booking',
+        title: 'New Job Request',
+        message: `New ${serviceType} service request from ${user.name} at ${address}`,
+        bookingId: booking._id
+      });
+
+      // Create notification for user
+      await Notification.create({
+        userId: user._id,
+        type: 'technician_assigned',
+        title: 'Technician Assigned',
+        message: `A technician has been assigned to your ${serviceType} request. ETA: ${eta} minutes`,
+        bookingId: booking._id
+      });
+
       // Emit socket events to notify all parties
       const io = req.app.get('io');
       io.to(`tech_${chosen._id}`).emit('booking:assigned', { bookingId: booking._id, user: { name: user.name, lat, lng, address } });
@@ -114,6 +133,15 @@ router.post('/:id/accept', auth, async (req, res) => {
 
     booking.status = 'accepted';
     await booking.save();
+
+    // Create notification for user
+    await Notification.create({
+      userId: booking.user._id,
+      type: 'booking_accepted',
+      title: 'Booking Accepted',
+      message: `Your ${booking.serviceType} service request has been accepted by the technician`,
+      bookingId: booking._id
+    });
 
     // Notify user via socket
     const io = req.app.get('io');
@@ -401,6 +429,48 @@ router.patch('/:id/status', auth, async (req, res) => {
       }
     }
 
+    // Create notifications based on status change
+    if (status === 'completed') {
+      // Notify user
+      await Notification.create({
+        userId: booking.user._id,
+        type: 'booking_completed',
+        title: 'Service Completed',
+        message: `Your ${booking.serviceType} service has been completed. Please rate your experience!`,
+        bookingId: booking._id
+      });
+      
+      // Notify technician
+      if (booking.technician && booking.technician.user) {
+        await Notification.create({
+          technicianId: booking.technician.user,
+          type: 'booking_completed',
+          title: 'Job Completed',
+          message: `You have completed the ${booking.serviceType} service`,
+          bookingId: booking._id
+        });
+      }
+    } else if (status === 'cancelled') {
+      // Notify both parties
+      await Notification.create({
+        userId: booking.user._id,
+        type: 'booking_cancelled',
+        title: 'Booking Cancelled',
+        message: `Your ${booking.serviceType} service request has been cancelled`,
+        bookingId: booking._id
+      });
+      
+      if (booking.technician && booking.technician.user) {
+        await Notification.create({
+          technicianId: booking.technician.user,
+          type: 'booking_cancelled',
+          title: 'Job Cancelled',
+          message: `The ${booking.serviceType} service has been cancelled`,
+          bookingId: booking._id
+        });
+      }
+    }
+
     // Emit socket events to notify all parties
     const io = req.app.get('io');
     io.emit('booking:updated', { bookingId: booking._id, status, oldStatus });
@@ -474,6 +544,15 @@ router.post('/:id/rate', auth, async (req, res) => {
           tech.rating = Math.round(avgRating * 10) / 10; // Round to 1 decimal
         }
         await tech.save();
+        
+        // Create notification for technician about the rating
+        await Notification.create({
+          technicianId: tech.user,
+          type: 'rating_received',
+          title: 'New Rating Received',
+          message: `You received a ${score}-star rating${review ? ': "' + review + '"' : ''}`,
+          bookingId: booking._id
+        });
       }
     }
 
