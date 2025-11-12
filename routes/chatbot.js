@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
-const auth = require('../middleware/auth');
+
 
 
 const CHATBOT_SERVICE_URL = process.env.CHATBOT_SERVICE_URL || 'https://quickfix-chatbot.onrender.com';
