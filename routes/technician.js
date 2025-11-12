@@ -303,4 +303,45 @@ router.put('/update-profile', auth, async (req, res) => {
   }
 });
 
+// Get technician feedbacks/ratings
+router.get('/feedbacks', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'technician') {
+      return res.status(403).json({ message: 'Access denied. Technicians only.' });
+    }
+
+    // Find technician profile
+    const technician = await Technician.findOne({ user: req.user.userId });
+    if (!technician) {
+      return res.json({ feedbacks: [] });
+    }
+
+    // Get all completed bookings with ratings for this technician
+    const Booking = mongoose.model('Booking');
+    const bookings = await Booking.find({
+      technician: technician._id,
+      rating: { $exists: true, $ne: null }
+    })
+    .populate('user', 'name')
+    .sort({ updatedAt: -1 })
+    .limit(50);
+
+    // Format feedbacks
+    const feedbacks = bookings.map(booking => ({
+      _id: booking._id,
+      rating: booking.rating || 0,
+      comment: booking.comment || '',
+      userName: booking.user?.name || 'Anonymous',
+      serviceType: booking.serviceType || 'Service',
+      createdAt: booking.updatedAt || booking.createdAt,
+      bookingId: booking._id
+    }));
+
+    res.json({ feedbacks });
+  } catch (error) {
+    console.error('Error fetching technician feedbacks:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 module.exports = router;
