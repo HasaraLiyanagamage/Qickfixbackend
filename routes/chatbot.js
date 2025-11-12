@@ -3,8 +3,8 @@ const router = express.Router();
 const axios = require('axios');
 const auth = require('../middleware/auth');
 
-// Chatbot service URL (update with your deployed URL)
-const CHATBOT_SERVICE_URL = process.env.CHATBOT_SERVICE_URL || 'http://localhost:5000';
+
+const CHATBOT_SERVICE_URL = process.env.CHATBOT_SERVICE_URL || 'https://quickfix-chatbot.onrender.com';
 
 // Chat with bot
 router.post('/chat', auth, async (req, res) => {
