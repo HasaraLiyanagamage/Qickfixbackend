@@ -5,6 +5,9 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const jwt = require('jsonwebtoken');
 const { haversineKm } = require('../utils/geo');
+const pricingService = require('../services/pricingService');
+const walletService = require('../services/walletService');
+const referralService = require('../services/referralService');
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'secretjwt';
 
@@ -18,6 +21,91 @@ function auth(req, res, next) {
     next();
   } catch (e) { return res.status(401).json({ message: 'Invalid token' }); }
 }
+
+/**
+ * Estimate fare before booking
+ * POST /api/booking/estimate-fare
+ * body: { serviceType, lat, lng, urgency, promoCode }
+ */
+router.post('/estimate-fare', auth, async (req, res) => {
+  try {
+    const { serviceType, lat, lng, urgency = 'normal', promoCode } = req.body;
+    
+    if (!serviceType || !lat || !lng) {
+      return res.status(400).json({ message: 'Service type and location are required' });
+    }
+
+    // Find nearest available technicians to calculate distance
+    const technicians = await Technician.find({
+      isAvailable: true,
+      skills: serviceType
+    }).limit(10);
+
+    if (technicians.length === 0) {
+      return res.status(404).json({ 
+        message: 'No technicians available for this service',
+        availableTechnicians: 0
+      });
+    }
+
+    // Calculate distance to nearest technician
+    let minDistance = Infinity;
+    for (const tech of technicians) {
+      if (tech.location && tech.location.coordinates) {
+        const [techLng, techLat] = tech.location.coordinates;
+        const dist = haversineKm(lat, lng, techLat, techLng);
+        if (dist < minDistance) minDistance = dist;
+      }
+    }
+
+    // If no technician has location, use default distance
+    if (minDistance === Infinity) {
+      minDistance = 5; // Default 5km
+    }
+
+    // Check if weekend
+    const now = new Date();
+    const isWeekend = now.getDay() === 0 || now.getDay() === 6;
+
+    // Calculate fare
+    let fareDetails = pricingService.calculateFare({
+      serviceType,
+      distance: minDistance,
+      urgency,
+      dateTime: now,
+      isWeekend
+    });
+
+    // Apply promo code if provided
+    if (promoCode) {
+      try {
+        fareDetails = await pricingService.applyPromoCode(
+          fareDetails,
+          promoCode,
+          req.user.userId,
+          serviceType
+        );
+      } catch (error) {
+        return res.status(400).json({ 
+          message: error.message,
+          fare: fareDetails // Return fare without promo
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      fare: fareDetails,
+      estimatedDistance: minDistance.toFixed(2),
+      availableTechnicians: technicians.length,
+      surgeActive: fareDetails.surgeFare > 0,
+      surgeMultiplier: pricingService.getSurgeMultiplier(now, urgency)
+    });
+  } catch (error) {
+    console.error('Fare estimation error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
 
 /**
  * Create booking and match nearest available technician (simple)
@@ -559,6 +647,129 @@ router.post('/:id/rate', auth, async (req, res) => {
     res.json({ message: 'Rating submitted successfully', booking });
   } catch (error) {
     console.error('Error rating booking:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+/**
+ * Update technician location during active booking
+ * POST /api/booking/:id/update-location
+ * body: { lat, lng }
+ */
+router.post('/:id/update-location', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'technician') {
+      return res.status(403).json({ message: 'Only technicians can update location' });
+    }
+
+    const { lat, lng } = req.body;
+    
+    if (!lat || !lng) {
+      return res.status(400).json({ message: 'Latitude and longitude are required' });
+    }
+
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    // Verify technician is assigned to this booking
+    const tech = await Technician.findOne({ user: req.user.userId });
+    if (!tech || booking.technician.toString() !== tech._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized for this booking' });
+    }
+
+    // Update tracking location
+    if (!booking.tracking) {
+      booking.tracking = {};
+    }
+    
+    booking.tracking.technicianLocation = {
+      lat,
+      lng,
+      updatedAt: new Date()
+    };
+
+    // Calculate distance to user
+    const distance = haversineKm(
+      lat,
+      lng,
+      booking.location.lat,
+      booking.location.lng
+    );
+    booking.tracking.distance = distance;
+
+    // Estimate arrival time (assuming 40 km/h average speed)
+    const etaMinutes = Math.round((distance / 40) * 60);
+    booking.etaMinutes = etaMinutes;
+    booking.tracking.estimatedArrival = new Date(Date.now() + etaMinutes * 60000);
+
+    await booking.save();
+
+    // Emit socket event for real-time update
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${booking.user}`).emit('technician:location', {
+        bookingId: booking._id,
+        location: { lat, lng },
+        distance: distance.toFixed(2),
+        eta: etaMinutes
+      });
+    }
+
+    res.json({
+      success: true,
+      distance: distance.toFixed(2),
+      eta: etaMinutes,
+      estimatedArrival: booking.tracking.estimatedArrival
+    });
+  } catch (error) {
+    console.error('Location update error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+/**
+ * Get live tracking data for booking
+ * GET /api/booking/:id/tracking
+ */
+router.get('/:id/tracking', auth, async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id)
+      .populate('technician')
+      .populate('user', 'name phone');
+
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    // Verify user is authorized (either user or technician)
+    const isUser = booking.user._id.toString() === req.user.userId;
+    const tech = await Technician.findOne({ user: req.user.userId });
+    const isTechnician = tech && booking.technician && 
+                        booking.technician._id.toString() === tech._id.toString();
+
+    if (!isUser && !isTechnician && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    res.json({
+      success: true,
+      tracking: booking.tracking || {},
+      userLocation: {
+        lat: booking.location.lat,
+        lng: booking.location.lng,
+        address: booking.location.address
+      },
+      technicianLocation: booking.tracking?.technicianLocation || null,
+      distance: booking.tracking?.distance || null,
+      eta: booking.etaMinutes || null,
+      estimatedArrival: booking.tracking?.estimatedArrival || null,
+      status: booking.status
+    });
+  } catch (error) {
+    console.error('Get tracking error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

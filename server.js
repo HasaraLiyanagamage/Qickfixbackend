@@ -11,6 +11,9 @@ const userRoutes = require('./routes/user');
 const adminRoutes = require('./routes/admin');
 const messageRoutes = require('./routes/message');
 const notificationRoutes = require('./routes/notifications');
+const walletRoutes = require('./routes/wallet');
+const promoRoutes = require('./routes/promo');
+const referralRoutes = require('./routes/referral');
 
 const app = express();
 
@@ -43,6 +46,9 @@ app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/message', messageRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/wallet', walletRoutes);
+app.use('/api/promo', promoRoutes);
+app.use('/api/referral', referralRoutes);
 
 io.on('connection', socket => {
   console.log('Socket connected', socket.id);
