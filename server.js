@@ -10,6 +10,7 @@ const bookingRoutes = require('./routes/booking');
 const userRoutes = require('./routes/user');
 const adminRoutes = require('./routes/admin');
 const messageRoutes = require('./routes/message');
+const notificationRoutes = require('./routes/notifications');
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use('/api/booking', bookingRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/message', messageRoutes);
+app.use('/api/notification', notificationRoutes);
 
 io.on('connection', socket => {
   console.log('Socket connected', socket.id);
