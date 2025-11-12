@@ -1,7 +1,23 @@
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const jwt = require('jsonwebtoken');
 const Notification = require('../models/Notification');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'secretjwt';
+
+// Auth middleware
+function auth(req, res, next) {
+  const hdr = req.headers.authorization;
+  if (!hdr) return res.status(401).json({ message: 'Missing auth' });
+  const token = hdr.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (e) { 
+    return res.status(401).json({ message: 'Invalid token' }); 
+  }
+}
 
 // Get user notifications
 router.get('/', auth, async (req, res) => {

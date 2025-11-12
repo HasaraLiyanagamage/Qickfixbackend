@@ -42,7 +42,7 @@ app.use('/api/booking', bookingRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/message', messageRoutes);
-app.use('/api/notification', notificationRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 io.on('connection', socket => {
   console.log('Socket connected', socket.id);
