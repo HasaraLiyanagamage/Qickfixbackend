@@ -42,22 +42,52 @@ router.post('/submit', auth, async (req, res) => {
     let verification = await Verification.findOne({ technician: technician._id });
 
     if (verification) {
-      // Update existing verification
-      verification.documents = { ...verification.documents, ...documents };
+      // Update existing verification - properly merge documents
+      if (documents.idProof) {
+        verification.documents.idProof = { ...verification.documents.idProof, ...documents.idProof };
+      }
+      if (documents.tradeLicense) {
+        verification.documents.tradeLicense = { ...verification.documents.tradeLicense, ...documents.tradeLicense };
+      }
+      if (documents.policeClearance) {
+        verification.documents.policeClearance = { ...verification.documents.policeClearance, ...documents.policeClearance };
+      }
+      if (documents.addressProof) {
+        verification.documents.addressProof = { ...verification.documents.addressProof, ...documents.addressProof };
+      }
+      if (documents.qualifications) {
+        // Merge qualifications array
+        if (!verification.documents.qualifications) {
+          verification.documents.qualifications = [];
+        }
+        verification.documents.qualifications = [
+          ...verification.documents.qualifications,
+          ...documents.qualifications
+        ];
+      }
+      
       verification.status = 'pending';
       verification.submittedAt = new Date();
+      
+      // Initialize resubmissions array if it doesn't exist
+      if (!verification.resubmissions) {
+        verification.resubmissions = [];
+      }
       verification.resubmissions.push({
         submittedAt: new Date(),
         status: 'pending',
         notes: 'Resubmitted documents'
       });
+      
+      verification.markModified('documents');
     } else {
       // Create new verification
       verification = new Verification({
         technician: technician._id,
         documents,
         status: 'pending',
-        submittedAt: new Date()
+        submittedAt: new Date(),
+        resubmissions: []
       });
     }
 
