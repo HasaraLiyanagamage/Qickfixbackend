@@ -1,5 +1,6 @@
 const express = require('express');
 const User = require('../models/User');
+const Booking = require('../models/Booking');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'secretjwt';
@@ -81,6 +82,120 @@ router.put('/update-profile', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating user profile:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get service history
+router.get('/service-history', auth, async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    // Build query
+    const query = {
+      user: req.user.userId,
+      status: 'completed'
+    };
+    
+    // Add date filtering if provided
+    if (startDate && endDate) {
+      query.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+    
+    // Get completed bookings
+    const history = await Booking.find(query)
+      .populate('technician', 'name phone rating')
+      .sort({ createdAt: -1 });
+    
+    res.json({ history });
+  } catch (error) {
+    console.error('Error fetching service history:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get favorites (moved from separate route)
+router.get('/favorites', auth, async (req, res) => {
+  try {
+    const Favorite = require('../models/Favorite');
+    
+    const favorites = await Favorite.find({ user: req.user.userId })
+      .populate({
+        path: 'technician',
+        select: 'name email phone serviceType rating totalReviews skills'
+      })
+      .sort({ createdAt: -1 });
+    
+    res.json({ favorites });
+  } catch (error) {
+    console.error('Error fetching favorites:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Add favorite
+router.post('/favorites', auth, async (req, res) => {
+  try {
+    const Favorite = require('../models/Favorite');
+    const { technicianId } = req.body;
+    
+    if (!technicianId) {
+      return res.status(400).json({ error: 'Technician ID required' });
+    }
+    
+    // Check if already in favorites
+    const existing = await Favorite.findOne({
+      user: req.user.userId,
+      technician: technicianId
+    });
+    
+    if (existing) {
+      return res.status(400).json({ error: 'Already in favorites' });
+    }
+    
+    // Create favorite
+    const favorite = new Favorite({
+      user: req.user.userId,
+      technician: technicianId
+    });
+    
+    await favorite.save();
+    
+    res.json({ 
+      success: true,
+      message: 'Added to favorites',
+      favorite
+    });
+  } catch (error) {
+    console.error('Error adding favorite:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Remove favorite
+router.delete('/favorites/:technicianId', auth, async (req, res) => {
+  try {
+    const Favorite = require('../models/Favorite');
+    const { technicianId } = req.params;
+    
+    const result = await Favorite.findOneAndDelete({
+      user: req.user.userId,
+      technician: technicianId
+    });
+    
+    if (!result) {
+      return res.status(404).json({ error: 'Favorite not found' });
+    }
+    
+    res.json({ 
+      success: true,
+      message: 'Removed from favorites'
+    });
+  } catch (error) {
+    console.error('Error removing favorite:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

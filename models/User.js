@@ -10,6 +10,10 @@ const UserSchema = new mongoose.Schema({
   lng: { type: Number },
   role: { type: String, enum: ['user','technician','admin'], default: 'user' },
   socialProvider: { type: String }, // 'google', 'apple', etc.
+  twoFactorEnabled: { type: Boolean, default: false },
+  twoFactorCode: { type: String },
+  twoFactorCodeExpiry: { type: Date },
+  twoFactorMethod: { type: String, enum: ['sms', 'email'] },
   createdAt: { type: Date, default: Date.now }
 });
 

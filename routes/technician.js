@@ -1,6 +1,8 @@
 const express = require('express');
 const Technician = require('../models/Technician');
 const User = require('../models/User');
+const Booking = require('../models/Booking');
+const BlockedTimeSlot = require('../models/BlockedTimeSlot');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'secretjwt';
@@ -352,6 +354,64 @@ router.get('/feedbacks', auth, async (req, res) => {
     res.json({ feedbacks });
   } catch (error) {
     console.error('Error fetching technician feedbacks:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get technician schedule
+router.get('/schedule', auth, async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    // Build query
+    const query = { technician: req.user.userId };
+    
+    if (startDate && endDate) {
+      query.scheduledDate = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+    
+    // Get bookings
+    const bookings = await Booking.find(query)
+      .populate('user', 'name phone email')
+      .sort({ scheduledDate: 1 });
+    
+    res.json({ schedule: bookings });
+  } catch (error) {
+    console.error('Error fetching schedule:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Block time slot
+router.post('/block-time', auth, async (req, res) => {
+  try {
+    const { date, startTime, endTime, reason } = req.body;
+    
+    if (!date || !startTime || !endTime) {
+      return res.status(400).json({ error: 'Date, start time, and end time are required' });
+    }
+    
+    // Create blocked time slot
+    const blockedSlot = new BlockedTimeSlot({
+      technician: req.user.userId,
+      date: new Date(date),
+      startTime,
+      endTime,
+      reason: reason || ''
+    });
+    
+    await blockedSlot.save();
+    
+    res.json({ 
+      success: true,
+      message: 'Time slot blocked successfully',
+      blockedSlot
+    });
+  } catch (error) {
+    console.error('Error blocking time:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

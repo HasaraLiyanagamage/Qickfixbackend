@@ -14,6 +14,9 @@ const notificationRoutes = require('./routes/notifications');
 const chatbotRoutes = require('./routes/chatbot');
 const verificationRoutes = require('./routes/verification');
 const analyticsRoutes = require('./routes/analytics');
+const paymentRoutes = require('./routes/payment');
+const twoFactorRoutes = require('./routes/twoFactor');
+const packagesRoutes = require('./routes/packages');
 
 const app = express();
 
@@ -49,6 +52,9 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/payment', paymentRoutes);
+app.use('/api/auth/2fa', twoFactorRoutes);
+app.use('/api/packages', packagesRoutes);
 
 io.on('connection', socket => {
   console.log('Socket connected', socket.id);
@@ -68,6 +74,20 @@ io.on('connection', socket => {
   socket.on('tech:location', data => {
     const room = `tech_${data.techId}`;
     io.to(room).emit('tech:location', data);
+  });
+
+  // Chat functionality
+  socket.on('join_chat', (chatId) => {
+    socket.join(chatId);
+    console.log(`Socket ${socket.id} joined chat ${chatId}`);
+  });
+
+  socket.on('send_message', (message) => {
+    io.to(message.chatId).emit('new_message', message);
+  });
+
+  socket.on('typing', (data) => {
+    socket.to(data.chatId).emit('user_typing', data);
   });
 
   socket.on('disconnect', () => {
