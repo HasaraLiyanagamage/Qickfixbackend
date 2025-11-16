@@ -131,7 +131,11 @@ router.get('/favorites', auth, async (req, res) => {
     const favorites = await Favorite.find({ user: req.user.userId })
       .populate({
         path: 'technician',
-        select: 'name email phone serviceType rating totalReviews skills'
+        select: 'serviceType rating totalReviews skills user',
+        populate: {
+          path: 'user',
+          select: 'name email phone'
+        }
       })
       .sort({ createdAt: -1 });
     
