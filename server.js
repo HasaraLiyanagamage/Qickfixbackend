@@ -17,6 +17,7 @@ const analyticsRoutes = require('./routes/analytics');
 const paymentRoutes = require('./routes/payment');
 const twoFactorRoutes = require('./routes/twoFactor');
 const packagesRoutes = require('./routes/packages');
+const quotationRoutes = require('./routes/quotation');
 
 const app = express();
 
@@ -55,6 +56,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/auth/2fa', twoFactorRoutes);
 app.use('/api/packages', packagesRoutes);
+app.use('/api/booking', quotationRoutes);
 
 io.on('connection', socket => {
   console.log('Socket connected', socket.id);

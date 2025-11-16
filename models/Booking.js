@@ -6,7 +6,7 @@ const BookingSchema = new mongoose.Schema({
   serviceType: { type: String, required: true }, // plumbing, electrical, etc.
   status: { 
     type: String, 
-    enum: ['requested', 'matched', 'accepted', 'in_progress', 'arrived', 'completed', 'cancelled'], 
+    enum: ['requested', 'matched', 'accepted', 'arrived', 'inspecting', 'quoted', 'quote_approved', 'in_progress', 'completed', 'cancelled'], 
     default: 'requested' 
   },
   
@@ -29,6 +29,27 @@ const BookingSchema = new mongoose.Schema({
     promoCode: String,
     totalFare: { type: Number, default: 0 },
     currency: { type: String, default: 'LKR' }
+  },
+  
+  // Quotation details (for on-site estimation)
+  quotation: {
+    laborCost: { type: Number, default: 0 },
+    materialsCost: { type: Number, default: 0 },
+    additionalCosts: [{ 
+      description: String, 
+      amount: Number 
+    }],
+    totalEstimate: { type: Number, default: 0 },
+    notes: String,
+    providedAt: Date,
+    providedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Technician' },
+    status: { 
+      type: String, 
+      enum: ['pending', 'approved', 'rejected', 'revised'], 
+      default: 'pending' 
+    },
+    approvedAt: Date,
+    rejectedReason: String
   },
   
   // Payment details
