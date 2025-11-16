@@ -75,23 +75,39 @@ class EmergencyService {
     const { lat, lng } = booking.location;
     
     // Find available technicians near the location
-    const technicians = await Technician.find({
-      skills: booking.serviceType,
-      available: true,
-      'location.lat': { $exists: true },
-      'location.lng': { $exists: true }
-    });
+    // For emergency service type, find ALL available technicians
+    // For specific services, filter by skill
+    const query = {
+      isAvailable: true,
+      'location.coordinates': { $exists: true }
+    };
+    
+    // Only filter by skill if NOT emergency service
+    if (booking.serviceType && booking.serviceType.toLowerCase() !== 'emergency') {
+      query.skills = booking.serviceType;
+    }
+    
+    const technicians = await Technician.find(query);
     
     // Calculate distances and sort by proximity
-    const techniciansWithDistance = technicians.map(tech => {
-      const distance = this.calculateDistance(
-        lat, lng,
-        tech.location.lat, tech.location.lng
-      );
-      return { technician: tech, distance };
-    })
-    .filter(t => t.distance <= config.maxRadius)
-    .sort((a, b) => a.distance - b.distance);
+    const techniciansWithDistance = technicians
+      .map(tech => {
+        // Technician location is stored as GeoJSON: { type: 'Point', coordinates: [lng, lat] }
+        if (!tech.location || !tech.location.coordinates || tech.location.coordinates.length < 2) {
+          return null; // Skip technicians without valid location
+        }
+        
+        const techLng = tech.location.coordinates[0];
+        const techLat = tech.location.coordinates[1];
+        
+        const distance = this.calculateDistance(
+          lat, lng,
+          techLat, techLng
+        );
+        return { technician: tech, distance };
+      })
+      .filter(t => t !== null && t.distance <= config.maxRadius)
+      .sort((a, b) => a.distance - b.distance);
     
     // Broadcast to multiple technicians based on priority
     const techsToNotify = techniciansWithDistance.slice(0, config.broadcastCount);
@@ -171,19 +187,32 @@ class EmergencyService {
     console.log(`Escalation level ${newLevel}: Radius=${expandedRadius}km, Broadcast=${expandedBroadcast}`);
     
     // Find more technicians with expanded criteria
-    const technicians = await Technician.find({
-      skills: booking.serviceType,
-      available: true,
-      'location.lat': { $exists: true },
-      'location.lng': { $exists: true }
-    });
+    const query = {
+      isAvailable: true,
+      'location.coordinates': { $exists: true }
+    };
+    
+    // Only filter by skill if NOT emergency service
+    if (booking.serviceType && booking.serviceType.toLowerCase() !== 'emergency') {
+      query.skills = booking.serviceType;
+    }
+    
+    const technicians = await Technician.find(query);
     
     const { lat, lng } = booking.location;
     const techniciansWithDistance = technicians
-      .map(tech => ({
-        technician: tech,
-        distance: this.calculateDistance(lat, lng, tech.location.lat, tech.location.lng)
-      }))
+      .map(tech => {
+        if (!tech.location || !tech.location.coordinates || tech.location.coordinates.length < 2) {
+          return null;
+        }
+        const techLng = tech.location.coordinates[0];
+        const techLat = tech.location.coordinates[1];
+        return {
+          technician: tech,
+          distance: this.calculateDistance(lat, lng, techLat, techLng)
+        };
+      })
+      .filter(t => t !== null)
       .filter(t => t.distance <= expandedRadius)
       .filter(t => !booking.emergency.broadcastedTo.includes(t.technician._id)) // Exclude already notified
       .sort((a, b) => a.distance - b.distance)
