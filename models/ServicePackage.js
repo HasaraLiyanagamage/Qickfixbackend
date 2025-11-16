@@ -11,7 +11,7 @@ const ServicePackageSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['basic', 'standard', 'premium'],
+    enum: ['basic', 'standard', 'premium', 'emergency', 'subscription'],
     required: true
   },
   price: {
