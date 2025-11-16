@@ -105,9 +105,15 @@ router.get('/service-history', auth, async (req, res) => {
       };
     }
     
-    // Get completed bookings
+    // Get completed bookings with populated technician user data
     const history = await Booking.find(query)
-      .populate('technician', 'name phone rating')
+      .populate({
+        path: 'technician',
+        populate: {
+          path: 'user',
+          select: 'name phone email'
+        }
+      })
       .sort({ createdAt: -1 });
     
     res.json({ history });
