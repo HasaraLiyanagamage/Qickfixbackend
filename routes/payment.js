@@ -2,6 +2,15 @@ const express = require('express');
 const router = express.Router();
 const Booking = require('../models/Booking');
 
+// Get socket.io instance
+let io;
+const setSocketIO = (socketIO) => {
+  io = socketIO;
+};
+
+// Export the setter function
+router.setSocketIO = setSocketIO;
+
 // Middleware to verify JWT token
 const auth = (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -90,13 +99,16 @@ router.post('/cash', auth, async (req, res) => {
     const { bookingId } = req.body;
     
     // Find and update booking
-    const booking = await Booking.findById(bookingId);
+    const booking = await Booking.findById(bookingId)
+      .populate('technician')
+      .populate('user', 'name email');
+    
     if (!booking) {
       return res.status(404).json({ error: 'Booking not found' });
     }
     
     // Verify user owns this booking
-    if (booking.user.toString() !== req.user.id) {
+    if (booking.user._id.toString() !== req.user.id) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
     
@@ -105,6 +117,18 @@ router.post('/cash', auth, async (req, res) => {
     booking.payment.status = 'pending'; // Waiting for technician to confirm receipt
     booking.status = 'payment_pending';
     await booking.save();
+    
+    // Emit socket event to technician
+    if (io && booking.technician) {
+      const technicianUserId = booking.technician.user?._id || booking.technician.user;
+      io.to(`user_${technicianUserId}`).emit('payment:initiated', {
+        bookingId: booking._id,
+        status: 'payment_pending',
+        paymentMethod: 'cash',
+        message: 'Customer has initiated cash payment'
+      });
+      console.log(`Socket: payment:initiated sent to technician ${technicianUserId}`);
+    }
     
     res.json({ 
       success: true,
@@ -122,13 +146,16 @@ router.post('/card', auth, async (req, res) => {
     const { bookingId } = req.body;
     
     // Find and update booking
-    const booking = await Booking.findById(bookingId);
+    const booking = await Booking.findById(bookingId)
+      .populate('technician')
+      .populate('user', 'name email');
+    
     if (!booking) {
       return res.status(404).json({ error: 'Booking not found' });
     }
     
     // Verify user owns this booking
-    if (booking.user.toString() !== req.user.id) {
+    if (booking.user._id.toString() !== req.user.id) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
     
@@ -137,6 +164,18 @@ router.post('/card', auth, async (req, res) => {
     booking.payment.status = 'pending'; // Waiting for technician to confirm receipt
     booking.status = 'payment_pending';
     await booking.save();
+    
+    // Emit socket event to technician
+    if (io && booking.technician) {
+      const technicianUserId = booking.technician.user?._id || booking.technician.user;
+      io.to(`user_${technicianUserId}`).emit('payment:initiated', {
+        bookingId: booking._id,
+        status: 'payment_pending',
+        paymentMethod: 'card',
+        message: 'Customer has initiated card payment'
+      });
+      console.log(`Socket: payment:initiated sent to technician ${technicianUserId}`);
+    }
     
     res.json({ 
       success: true,
@@ -155,7 +194,8 @@ router.post('/confirm-received', auth, async (req, res) => {
     
     // Find booking
     const booking = await Booking.findById(bookingId)
-      .populate('technician');
+      .populate('technician')
+      .populate('user', 'name email');
     
     if (!booking) {
       return res.status(404).json({ error: 'Booking not found' });
@@ -179,6 +219,19 @@ router.post('/confirm-received', auth, async (req, res) => {
     booking.payment.paidAt = new Date();
     booking.status = 'completed';
     await booking.save();
+    
+    // Emit socket event to user
+    if (io && booking.user) {
+      const userId = booking.user._id || booking.user;
+      io.to(`user_${userId}`).emit('payment:confirmed', {
+        bookingId: booking._id,
+        status: 'completed',
+        paymentMethod: booking.payment.method,
+        paidAt: booking.payment.paidAt,
+        message: 'Payment confirmed by technician'
+      });
+      console.log(`Socket: payment:confirmed sent to user ${userId}`);
+    }
     
     res.json({ 
       success: true,

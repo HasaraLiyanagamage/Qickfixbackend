@@ -58,6 +58,9 @@ app.use('/api/auth/2fa', twoFactorRoutes);
 app.use('/api/packages', packagesRoutes);
 app.use('/api/booking', quotationRoutes);
 
+// Initialize socket.io for payment routes
+paymentRoutes.setSocketIO(io);
+
 io.on('connection', socket => {
   console.log('Socket connected', socket.id);
 
