@@ -408,7 +408,10 @@ router.get('/user', auth, async (req, res) => {
       updatedAt: booking.updatedAt,
       etaMinutes: booking.etaMinutes,
       priceEstimate: booking.priceEstimate,
-      totalCost: booking.priceEstimate
+      totalCost: booking.priceEstimate,
+      payment: booking.payment,
+      quotation: booking.quotation,
+      rating: booking.rating
     }));
 
     res.json(formattedBookings);
