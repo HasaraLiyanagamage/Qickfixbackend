@@ -426,7 +426,7 @@ router.get('/:id', auth, async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id).populate('technician').populate('user');
     if (!booking) return res.status(404).json({ message: 'Not found' });
-    res.json(booking);
+    res.json({ booking });
   } catch (e) {
     console.error(e);
     res.status(500).json({ message: 'Server error' });
