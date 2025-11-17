@@ -84,7 +84,7 @@ router.post('/confirm', auth, async (req, res) => {
   }
 });
 
-// Confirm cash payment
+// Confirm cash payment (user initiates)
 router.post('/cash', auth, async (req, res) => {
   try {
     const { bookingId } = req.body;
@@ -95,17 +95,98 @@ router.post('/cash', auth, async (req, res) => {
       return res.status(404).json({ error: 'Booking not found' });
     }
     
-    // Update booking for cash payment
-    booking.paymentMethod = 'cash';
-    booking.paymentStatus = 'pending'; // Will be marked as paid after service completion
+    // Verify user owns this booking
+    if (booking.user.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    
+    // Update booking for cash payment - awaiting technician confirmation
+    booking.payment.method = 'cash';
+    booking.payment.status = 'pending'; // Waiting for technician to confirm receipt
+    booking.status = 'payment_pending';
     await booking.save();
     
     res.json({ 
       success: true,
-      message: 'Cash payment method selected'
+      message: 'Cash payment initiated. Waiting for technician confirmation.'
     });
   } catch (error) {
     console.error('Cash payment error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Confirm card payment (user initiates)
+router.post('/card', auth, async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+    
+    // Find and update booking
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    
+    // Verify user owns this booking
+    if (booking.user.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    
+    // Update booking for card payment - awaiting technician confirmation
+    booking.payment.method = 'card';
+    booking.payment.status = 'pending'; // Waiting for technician to confirm receipt
+    booking.status = 'payment_pending';
+    await booking.save();
+    
+    res.json({ 
+      success: true,
+      message: 'Card payment initiated. Waiting for technician confirmation.'
+    });
+  } catch (error) {
+    console.error('Card payment error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Technician confirms payment received
+router.post('/confirm-received', auth, async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+    
+    // Find booking
+    const booking = await Booking.findById(bookingId)
+      .populate('technician');
+    
+    if (!booking) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    
+    // Verify technician is assigned to this booking
+    const Technician = require('../models/Technician');
+    const technician = await Technician.findOne({ user: req.user.id });
+    
+    if (!technician || booking.technician._id.toString() !== technician._id.toString()) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    
+    // Verify payment is pending
+    if (booking.payment.status !== 'pending') {
+      return res.status(400).json({ error: 'Payment is not pending confirmation' });
+    }
+    
+    // Mark payment as completed
+    booking.payment.status = 'completed';
+    booking.payment.paidAt = new Date();
+    booking.status = 'completed';
+    await booking.save();
+    
+    res.json({ 
+      success: true,
+      message: 'Payment confirmed successfully',
+      booking
+    });
+  } catch (error) {
+    console.error('Confirm payment received error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -115,12 +196,29 @@ router.get('/history', auth, async (req, res) => {
   try {
     const bookings = await Booking.find({
       user: req.user.id,
-      paymentStatus: 'paid'
+      'payment.status': 'completed'
     })
-    .populate('technician', 'name')
-    .sort({ paidAt: -1 });
+    .populate('technician')
+    .populate('user', 'name email')
+    .sort({ 'payment.paidAt': -1 });
     
-    res.json({ payments: bookings });
+    // Format payment history
+    const payments = bookings.map(booking => ({
+      _id: booking._id,
+      bookingId: booking._id,
+      serviceType: booking.serviceType,
+      amount: booking.quotation?.totalEstimate || booking.pricing?.totalFare || 0,
+      paymentMethod: booking.payment.method,
+      paidAt: booking.payment.paidAt,
+      technician: booking.technician ? {
+        name: booking.technician.user?.name || 'Unknown',
+        phone: booking.technician.phone
+      } : null,
+      status: booking.status,
+      location: booking.location
+    }));
+    
+    res.json({ payments });
   } catch (error) {
     console.error('Get payment history error:', error);
     res.status(500).json({ error: error.message });
