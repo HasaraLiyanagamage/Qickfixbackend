@@ -24,14 +24,21 @@ router.post('/:bookingId/provide', auth, async (req, res) => {
     const { bookingId } = req.params;
     const { laborCost, materialsCost, additionalCosts, notes } = req.body;
 
+    // Find the technician profile for this user
+    const Technician = require('../models/Technician');
+    const technician = await Technician.findOne({ user: req.user.userId });
+    if (!technician) {
+      return res.status(403).json({ error: 'Technician profile not found' });
+    }
+
     const booking = await Booking.findById(bookingId);
     if (!booking) {
       return res.status(404).json({ error: 'Booking not found' });
     }
 
     // Verify technician is assigned to this booking
-    if (booking.technician.toString() !== req.user.technicianId) {
-      return res.status(403).json({ error: 'Not authorized' });
+    if (booking.technician.toString() !== technician._id.toString()) {
+      return res.status(403).json({ error: 'Not authorized - You are not assigned to this booking' });
     }
 
     // Calculate total estimate
@@ -50,7 +57,7 @@ router.post('/:bookingId/provide', auth, async (req, res) => {
       totalEstimate,
       notes: notes || '',
       providedAt: new Date(),
-      providedBy: req.user.technicianId,
+      providedBy: technician._id,
       status: 'pending'
     };
     booking.status = 'quoted';
@@ -168,7 +175,16 @@ router.get('/:bookingId', auth, async (req, res) => {
 
     // Verify user has access to this booking
     const isUser = booking.user._id.toString() === req.user.userId;
-    const isTechnician = booking.technician && booking.technician._id.toString() === req.user.technicianId;
+    
+    // Check if user is the assigned technician
+    let isTechnician = false;
+    if (req.user.role === 'technician') {
+      const Technician = require('../models/Technician');
+      const technician = await Technician.findOne({ user: req.user.userId });
+      if (technician && booking.technician) {
+        isTechnician = booking.technician._id.toString() === technician._id.toString();
+      }
+    }
 
     if (!isUser && !isTechnician) {
       return res.status(403).json({ error: 'Not authorized' });
