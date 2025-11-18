@@ -6,7 +6,7 @@ const BookingSchema = new mongoose.Schema({
   serviceType: { type: String, required: true }, // plumbing, electrical, etc.
   status: { 
     type: String, 
-    enum: ['requested', 'matched', 'accepted', 'arrived', 'inspecting', 'quoted', 'quote_approved', 'in_progress', 'completed', 'cancelled'], 
+    enum: ['requested', 'matched', 'accepted', 'arrived', 'inspecting', 'quoted', 'quote_approved', 'in_progress', 'payment_pending', 'completed', 'cancelled'], 
     default: 'requested' 
   },
   
