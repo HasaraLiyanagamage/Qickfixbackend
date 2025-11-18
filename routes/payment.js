@@ -19,9 +19,16 @@ const auth = (req, res, next) => {
   try {
     const jwt = require('jsonwebtoken');
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    console.log('Decoded token:', decoded);
     req.user = decoded;
+    // Handle both 'id' and 'userId' fields for compatibility
+    if (!req.user.id && req.user.userId) {
+      req.user.id = req.user.userId;
+    }
+    console.log('req.user.id:', req.user.id);
     next();
   } catch (error) {
+    console.error('Token verification error:', error.message);
     res.status(401).json({ error: 'Invalid token' });
   }
 };
