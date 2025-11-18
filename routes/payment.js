@@ -192,22 +192,42 @@ router.post('/confirm-received', auth, async (req, res) => {
   try {
     const { bookingId } = req.body;
     
+    console.log('=== Confirm Payment Received ===');
+    console.log('User ID from token:', req.user.id);
+    console.log('Booking ID:', bookingId);
+    
     // Find booking
     const booking = await Booking.findById(bookingId)
       .populate('technician')
       .populate('user', 'name email');
     
     if (!booking) {
+      console.log('ERROR: Booking not found');
       return res.status(404).json({ error: 'Booking not found' });
     }
+    
+    console.log('Booking found. Technician ID:', booking.technician?._id);
     
     // Verify technician is assigned to this booking
     const Technician = require('../models/Technician');
     const technician = await Technician.findOne({ user: req.user.id });
     
-    if (!technician || booking.technician._id.toString() !== technician._id.toString()) {
-      return res.status(403).json({ error: 'Unauthorized' });
+    console.log('Technician found:', technician?._id);
+    console.log('Booking technician:', booking.technician?._id);
+    
+    if (!technician) {
+      console.log('ERROR: Technician profile not found for user:', req.user.id);
+      return res.status(403).json({ error: 'Technician profile not found' });
     }
+    
+    if (booking.technician._id.toString() !== technician._id.toString()) {
+      console.log('ERROR: Technician mismatch');
+      console.log('  Expected:', booking.technician._id.toString());
+      console.log('  Got:', technician._id.toString());
+      return res.status(403).json({ error: 'You are not assigned to this booking' });
+    }
+    
+    console.log('Authorization passed');
     
     // Verify payment is pending
     if (booking.payment.status !== 'pending') {
