@@ -51,7 +51,13 @@ router.get('/:id', auth, async (req, res) => {
 router.post('/:id/book', auth, async (req, res) => {
   try {
     const packageId = req.params.id;
-    const { location, scheduledDate, scheduledTime } = req.body;
+    const { location, scheduledDate, scheduledTime, technicianId } = req.body;
+    
+    console.log('=== Package Booking ===');
+    console.log('Package ID:', packageId);
+    console.log('User ID:', req.user.id || req.user.userId);
+    console.log('Technician ID:', technicianId);
+    console.log('Location:', location);
     
     // Get package details
     const package = await ServicePackage.findById(packageId);
@@ -63,27 +69,46 @@ router.post('/:id/book', auth, async (req, res) => {
       return res.status(400).json({ error: 'Package is not available' });
     }
     
+    // Handle userId compatibility
+    const userId = req.user.id || req.user.userId;
+    
     // Create booking with package details
     const booking = new Booking({
-      user: req.user.id,
+      user: userId,
+      technician: technicianId || null,
       serviceType: package.name,
       description: `Package: ${package.name} - ${package.services.join(', ')}`,
       location: location || {},
       packageId: packageId,
-      totalCost: package.price,
-      estimatedDuration: package.duration,
+      pricing: {
+        totalFare: package.price,
+        estimatedDuration: package.duration,
+      },
       scheduledDate: scheduledDate || new Date(),
       scheduledTime: scheduledTime || 'ASAP',
-      status: 'pending',
-      paymentStatus: 'pending'
+      status: technicianId ? 'accepted' : 'pending',
+      payment: {
+        status: 'pending',
+        method: null
+      }
     });
     
     await booking.save();
     
+    // Populate user and technician for response
+    await booking.populate('user', 'name email');
+    if (technicianId) {
+      await booking.populate('technician');
+    }
+    
     res.json({ 
       success: true,
       message: 'Package booked successfully',
-      booking
+      booking: {
+        id: booking._id.toString(),
+        _id: booking._id,
+        ...booking.toObject()
+      }
     });
   } catch (error) {
     console.error('Book package error:', error);
