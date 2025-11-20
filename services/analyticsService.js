@@ -632,34 +632,52 @@ class AnalyticsService {
    */
   static getDateRange(timeRange) {
     const now = new Date();
-    let startDate, endDate = now;
+    let startDate, endDate = new Date();
 
     switch (timeRange) {
       case 'today':
-        startDate = new Date(now.setHours(0, 0, 0, 0));
+        startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       case 'yesterday':
-        startDate = new Date(now.setDate(now.getDate() - 1));
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 1);
         startDate.setHours(0, 0, 0, 0);
         endDate = new Date(startDate);
         endDate.setHours(23, 59, 59, 999);
         break;
       case 'week':
-        startDate = new Date(now.setDate(now.getDate() - 7));
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 7);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       case 'month':
-        startDate = new Date(now.setMonth(now.getMonth() - 1));
+        startDate = new Date();
+        startDate.setMonth(startDate.getMonth() - 1);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       case 'quarter':
-        startDate = new Date(now.setMonth(now.getMonth() - 3));
+        startDate = new Date();
+        startDate.setMonth(startDate.getMonth() - 3);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       case 'year':
-        startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+        startDate = new Date();
+        startDate.setFullYear(startDate.getFullYear() - 1);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       default:
-        startDate = new Date(now.setHours(0, 0, 0, 0));
+        startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
     }
 
+    console.log(`Date Range for ${timeRange}: ${startDate} to ${endDate}`);
     return { startDate, endDate };
   }
 }
