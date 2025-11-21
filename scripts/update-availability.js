@@ -52,7 +52,7 @@ const readline = require('readline').createInterface({
   output: process.stdout
 });
 
-console.log('⚠️  This will set ALL unavailable technicians to available.');
+console.log(' This will set ALL unavailable technicians to available.');
 readline.question('Continue? (yes/no): ', (answer) => {
   readline.close();
   if (answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y') {

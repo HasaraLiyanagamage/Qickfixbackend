@@ -131,7 +131,7 @@ async function seedPackages() {
     
     // Insert new packages
     const result = await ServicePackage.insertMany(packages);
-    console.log(`✅ Successfully created ${result.length} service packages:`);
+    console.log(` Successfully created ${result.length} service packages:`);
     
     result.forEach((pkg, index) => {
       console.log(`\n${index + 1}. ${pkg.name}`);
@@ -142,10 +142,10 @@ async function seedPackages() {
       console.log(`   Discount: ${pkg.discount}%`);
     });
     
-    console.log('\n✅ Package seeding completed successfully!');
+    console.log('\n Package seeding completed successfully!');
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error seeding packages:', error);
+    console.error(' Error seeding packages:', error);
     process.exit(1);
   }
 }

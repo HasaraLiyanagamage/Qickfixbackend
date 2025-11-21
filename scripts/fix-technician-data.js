@@ -16,7 +16,7 @@ async function fixTechnicianData() {
     console.log(`Found ${technicians.length} technicians in database\n`);
 
     if (technicians.length === 0) {
-      console.log('⚠️  No technicians found. Run seed-technicians.js first.');
+      console.log('No technicians found. Run seed-technicians.js first.');
       process.exit(0);
     }
 
@@ -34,7 +34,7 @@ async function fixTechnicianData() {
       // Check if location is at default [0, 0]
       if (!tech.location || !tech.location.coordinates || 
           (tech.location.coordinates[0] === 0 && tech.location.coordinates[1] === 0)) {
-        console.log('⚠️  Location is at default [0, 0]');
+        console.log(' Location is at default [0, 0]');
         
         // Set to Sri Lanka center as default
         tech.location = {
@@ -47,7 +47,7 @@ async function fixTechnicianData() {
       
       // Ensure skills array is not empty
       if (!tech.skills || tech.skills.length === 0) {
-        console.log('⚠️  No skills defined');
+        console.log('  No skills defined');
         tech.skills = ['general'];
         needsUpdate = true;
         console.log('✓ Added default skill: general');
@@ -74,7 +74,7 @@ async function fixTechnicianData() {
       await Technician.collection.createIndex({ location: '2dsphere' });
       console.log('✓ Geospatial index created/verified');
     } catch (err) {
-      console.log('⚠️  Index might already exist:', err.message);
+      console.log('Index might already exist:', err.message);
     }
 
     // Show indexes
@@ -105,7 +105,7 @@ async function fixTechnicianData() {
     console.log('\n✓ Fix completed successfully!');
     process.exit(0);
   } catch (error) {
-    console.error('\n❌ Error:', error);
+    console.error('\n Error:', error);
     console.error(error.stack);
     process.exit(1);
   }
