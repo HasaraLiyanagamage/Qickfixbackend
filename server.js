@@ -54,7 +54,7 @@ app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/payment', paymentRoutes);
-app.use('/api/auth/2fa', twoFactorRoutes);
+app.use('/api/two-factor', twoFactorRoutes);
 app.use('/api/packages', packagesRoutes);
 app.use('/api/booking', quotationRoutes);
 
