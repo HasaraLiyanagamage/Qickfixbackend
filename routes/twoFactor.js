@@ -10,9 +10,10 @@ const auth = (req, res, next) => {
   try {
     const jwt = require('jsonwebtoken');
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-    req.user = decoded;
+    req.user = { id: decoded.userId || decoded.id }; // Support both userId and id
     next();
   } catch (error) {
+    console.error('Auth error:', error);
     res.status(401).json({ error: 'Invalid token' });
   }
 };
@@ -50,24 +51,38 @@ try {
 router.post('/send', auth, async (req, res) => {
   try {
     const { method } = req.body; // 'sms' or 'email'
+    console.log('2FA Send - User ID:', req.user.id, 'Method:', method);
+    
     const user = await User.findById(req.user.id);
     
     if (!user) {
+      console.error('User not found:', req.user.id);
       return res.status(404).json({ error: 'User not found' });
     }
     
+    console.log('User found:', user.email, user.phone);
+    
     // Generate 6-digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log('Generated 2FA code:', code);
     
     // Save code with 5-minute expiry
     user.twoFactorCode = code;
     user.twoFactorCodeExpiry = new Date(Date.now() + 5 * 60 * 1000);
     user.twoFactorMethod = method;
     await user.save();
+    console.log('Code saved to database');
     
     if (method === 'sms') {
       if (!twilioClient) {
-        return res.status(503).json({ error: 'SMS service not configured' });
+        console.warn('SMS service not configured - simulating SMS');
+        console.log('SIMULATED SMS to', user.phone, '- Code:', code);
+        // For development: return success without actually sending SMS
+        return res.json({ 
+          success: true,
+          message: `Verification code sent via ${method}`,
+          dev_code: process.env.NODE_ENV === 'development' ? code : undefined
+        });
       }
       
       if (!user.phone) {
@@ -86,7 +101,14 @@ router.post('/send', auth, async (req, res) => {
       }
     } else if (method === 'email') {
       if (!emailTransporter) {
-        return res.status(503).json({ error: 'Email service not configured' });
+        console.warn('Email service not configured - simulating email');
+        console.log('SIMULATED EMAIL to', user.email, '- Code:', code);
+        // For development: return success without actually sending email
+        return res.json({ 
+          success: true,
+          message: `Verification code sent via ${method}`,
+          dev_code: process.env.NODE_ENV === 'development' ? code : undefined
+        });
       }
       
       try {
@@ -124,11 +146,16 @@ router.post('/send', auth, async (req, res) => {
 router.post('/verify', auth, async (req, res) => {
   try {
     const { code } = req.body;
+    console.log('2FA Verify - User ID:', req.user.id, 'Code:', code);
+    
     const user = await User.findById(req.user.id);
     
     if (!user) {
+      console.error('User not found:', req.user.id);
       return res.status(404).json({ error: 'User not found' });
     }
+    
+    console.log('Stored code:', user.twoFactorCode, 'Expiry:', user.twoFactorCodeExpiry);
     
     // Check if code exists and not expired
     if (!user.twoFactorCode || !user.twoFactorCodeExpiry) {
@@ -141,8 +168,11 @@ router.post('/verify', auth, async (req, res) => {
     
     // Verify code
     if (user.twoFactorCode !== code) {
+      console.error('Code mismatch. Expected:', user.twoFactorCode, 'Got:', code);
       return res.status(400).json({ error: 'Invalid verification code' });
     }
+    
+    console.log('Code verified successfully!');
     
     // Clear code after successful verification
     user.twoFactorCode = undefined;

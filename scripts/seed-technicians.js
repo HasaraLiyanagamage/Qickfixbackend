@@ -75,7 +75,7 @@ async function seedTechnicians() {
           role: 'technician'
         });
         await user.save();
-        console.log(`✓ User created: ${techData.name}`);
+        console.log(` User created: ${techData.name}`);
       } else {
         console.log(`User already exists: ${techData.name}`);
       }
