@@ -88,6 +88,30 @@ router.get('/available', async (req, res) => {
     console.log('=== AVAILABLE TECHNICIANS REQUEST ===');
     console.log('Request params:', { lat, lng, radiusKm, skill });
     
+    // Validate lat/lng parameters
+    if (!lat || !lng) {
+      console.log('ERROR: Missing lat or lng parameters');
+      return res.status(400).json({ 
+        message: 'Latitude and longitude are required',
+        error: 'Missing location parameters'
+      });
+    }
+    
+    const userLat = parseFloat(lat);
+    const userLng = parseFloat(lng);
+    const maxRadius = parseFloat(radiusKm);
+    
+    // Validate parsed values
+    if (isNaN(userLat) || isNaN(userLng) || isNaN(maxRadius)) {
+      console.log('ERROR: Invalid lat/lng/radius values');
+      return res.status(400).json({ 
+        message: 'Invalid location parameters',
+        error: 'Latitude, longitude, and radius must be valid numbers'
+      });
+    }
+    
+    console.log(`Validated params: lat=${userLat}, lng=${userLng}, radius=${maxRadius}km`);
+    
     // First, let's check total technicians in DB
     const totalTechs = await Technician.countDocuments();
     const availableTechs = await Technician.countDocuments({ isAvailable: true });
@@ -124,47 +148,58 @@ router.get('/available', async (req, res) => {
     
     console.log(`Found ${technicians.length} technicians matching base criteria`);
     
-    // If we have lat/lng, calculate distances and filter by radius
-    if (lat && lng && technicians.length > 0) {
-      const userLat = parseFloat(lat);
-      const userLng = parseFloat(lng);
-      const maxRadius = parseFloat(radiusKm);
-      
-      console.log(`Calculating distances from (${userLat}, ${userLng})`);
-      
-      // Calculate distance for each technician
-      technicians = technicians.map(tech => {
-        if (tech.location && tech.location.coordinates && tech.location.coordinates.length === 2) {
-          const [techLng, techLat] = tech.location.coordinates;
-          
-          // Haversine formula for distance calculation
-          const R = 6371; // Earth's radius in km
-          const dLat = (techLat - userLat) * Math.PI / 180;
-          const dLng = (techLng - userLng) * Math.PI / 180;
-          const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                    Math.cos(userLat * Math.PI / 180) * Math.cos(techLat * Math.PI / 180) *
-                    Math.sin(dLng/2) * Math.sin(dLng/2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-          tech.distance = R * c;
-          
-          console.log(`Technician ${tech.user?.name}: ${tech.distance.toFixed(2)}km away at (${techLat}, ${techLng})`);
-        } else {
-          tech.distance = 999999; // No valid location
-          console.log(`Technician ${tech.user?.name}: No valid location`);
-        }
-        return tech;
-      });
-      
-      // Sort by distance (closest first)
-      technicians.sort((a, b) => a.distance - b.distance);
-      
-      // Filter by radius
-      const beforeFilter = technicians.length;
-      technicians = technicians.filter(t => t.distance <= maxRadius);
-      console.log(`After radius filter (${maxRadius}km): ${technicians.length}/${beforeFilter} technicians`);
+    if (technicians.length === 0) {
+      console.log('No available technicians found');
+      return res.json([]);
     }
     
-    console.log(`Returning ${technicians.length} technicians`);
+    // Calculate distances and filter by radius
+    console.log(`Calculating distances from user location (${userLat}, ${userLng})`);
+    
+    // Calculate distance for each technician
+    technicians = technicians.map(tech => {
+      if (tech.location && tech.location.coordinates && tech.location.coordinates.length === 2) {
+        const [techLng, techLat] = tech.location.coordinates;
+        
+        // Validate technician coordinates
+        if (techLat === 0 && techLng === 0) {
+          tech.distance = 999999; // Invalid location (0,0)
+          console.log(`Technician ${tech.user?.name}: Invalid location (0,0)`);
+          return tech;
+        }
+        
+        // Haversine formula for distance calculation
+        const R = 6371; // Earth's radius in km
+        const dLat = (techLat - userLat) * Math.PI / 180;
+        const dLng = (techLng - userLng) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(userLat * Math.PI / 180) * Math.cos(techLat * Math.PI / 180) *
+                  Math.sin(dLng/2) * Math.sin(dLng/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        tech.distance = R * c;
+        
+        console.log(`Technician ${tech.user?.name}: ${tech.distance.toFixed(2)}km away at (${techLat}, ${techLng})`);
+      } else {
+        tech.distance = 999999; // No valid location
+        console.log(`Technician ${tech.user?.name}: No valid location data`);
+      }
+      return tech;
+    });
+    
+    // Sort by distance (closest first)
+    technicians.sort((a, b) => a.distance - b.distance);
+    
+    // Filter by radius - CRITICAL: Only return technicians within radius
+    const beforeFilter = technicians.length;
+    technicians = technicians.filter(t => t.distance <= maxRadius);
+    console.log(`After radius filter (${maxRadius}km): ${technicians.length}/${beforeFilter} technicians`);
+    
+    if (technicians.length === 0) {
+      console.log(`No technicians found within ${maxRadius}km radius`);
+      return res.json([]);
+    }
+    
+    console.log(`Returning ${technicians.length} technicians within radius`);
     res.json(technicians);
   } catch (e) {
     console.error('Error in /available endpoint:', e);
